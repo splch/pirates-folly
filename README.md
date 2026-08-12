@@ -1,5 +1,8 @@
 # PIRATE'S FOLLY
 
+[![CI](https://github.com/splch/pirates-folly/actions/workflows/ci.yml/badge.svg)](https://github.com/splch/pirates-folly/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A procedurally-generated pirate exploration game for the Game Boy (DMG-first, CGB-enhanced).
 See `docs/PIRATE_GAME_PLAN.md` for the full design and roadmap, `MANUAL.md` for
 how to play, and `docs/PIRATE_LORE.md` for the Golden-Age source material behind
@@ -189,3 +192,7 @@ Generator phases (per 20×18 cell, deterministic from `wSeed16`):
   hands off there (frame ~64); a $0000 jump only covers no-boot emulators.
 - Initialize all 40 OAM entries, not just the ones you use — garbage sprites show
   up as stray dots otherwise.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

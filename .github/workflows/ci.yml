@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install RGBDS v1.0.3
+        run: |
+          mkdir -p rgbds-bin
+          curl -sL https://github.com/gbdev/rgbds/releases/download/v1.0.3/rgbds-linux-x86_64.tar.xz | tar -xJ -C rgbds-bin
+          echo "RGBDS_DIR=$PWD/rgbds-bin/" >> "$GITHUB_ENV"
+
+      - name: Build ROM
+        run: make RGBDS="$RGBDS_DIR"
+
+      - name: Install PyBoy
+        run: pip install pyboy
+
+      - name: Run test suite
+        run: |
+          for t in tests/test_*.py; do
+            echo "== $t"
+            python "$t"
+          done
+          python tests/lint_worlds.py
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pirates_folly.gb
+          path: pirates_folly.gb
+          retention-days: 14
