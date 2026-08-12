@@ -1,8 +1,8 @@
 # PIRATE'S FOLLY
 
 A procedurally-generated pirate exploration game for the Game Boy (DMG-first, CGB-enhanced).
-See `../PIRATE_GAME_PLAN.md` for the full design and roadmap, `MANUAL.md` for
-how to play, and `../PIRATE_LORE.md` for the Golden-Age source material behind
+See `docs/PIRATE_GAME_PLAN.md` for the full design and roadmap, `MANUAL.md` for
+how to play, and `docs/PIRATE_LORE.md` for the Golden-Age source material behind
 the names, rumors, and Isle legends.
 
 ## Current status: M6 — polish ✅ **v1.0**
@@ -20,7 +20,7 @@ the names, rumors, and Isle legends.
   + 2 OBJ palettes, per-tile attribute streaming alongside the tile pipeline,
   colored chart. DMG path untouched (attr writes guarded; verified bank 1 is
   never written on DMG).
-- **Lore pass** (from `../PIRATE_LORE.md`): 16 tavern rumors (several old ones
+- **Lore pass** (from `docs/PIRATE_LORE.md`): 16 tavern rumors (several old ones
   were silently truncated off-screen — all now fit), port-name tables enriched
   (JOLLY, DAVY, GROG, MAROON, KRAKEN / LOCKER, ROADS, REEF), and the Nine
   Isles have legendary names the tavern uses (LIBERTALIA:, WHYDAH DEEP:, ...).
@@ -117,7 +117,7 @@ M2 checks re-run clean.
 
 ## Build
 
-Requires RGBDS (prebuilt v1.0.3 binaries in `../tools/rgbds/bin/`).
+Requires RGBDS (prebuilt v1.0.3 binaries in `tools/rgbds/bin/`).
 
 ```bash
 make            # produces pirates_folly.gb (CGB-compatible, DMG-first)

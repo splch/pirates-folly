@@ -1,3 +1,10 @@
+# Reference clones and vendored toolchain (not tracked)
 rgbds/
 pandocs/
 awesome-gbdev/
+tools/rgbds/
+
+# Build artifacts and emulator save files
+build/
+*.gb
+*.gb.ram

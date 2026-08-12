@@ -1,6 +1,6 @@
 # PIRATE'S FOLLY — procedurally generated pirate exploration (M0: generator demo)
 
-RGBDS  ?= ../tools/rgbds/bin/
+RGBDS  ?= tools/rgbds/bin/
 RGBASM := $(RGBDS)rgbasm
 RGBLINK := $(RGBDS)rgblink
 RGBFIX := $(RGBDS)rgbfix

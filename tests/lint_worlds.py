@@ -1,6 +1,6 @@
 from pyboy import PyBoy
-ROM = "/home/spencer/Repositories/gb/pirates-folly/pirates_folly.gb"
-SYM = "/home/spencer/Repositories/gb/pirates-folly/build/pirates_folly.sym"
+ROM = "/home/spencer/Repositories/gb/pirates_folly.gb"
+SYM = "/home/spencer/Repositories/gb/build/pirates_folly.sym"
 syms = {}
 for line in open(SYM):
     p = line.split()

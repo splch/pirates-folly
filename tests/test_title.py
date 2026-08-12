@@ -1,5 +1,5 @@
 from pyboy import PyBoy
-pb = PyBoy("/home/spencer/Repositories/gb/pirates-folly/pirates_folly.gb", window="null")
+pb = PyBoy("/home/spencer/Repositories/gb/pirates_folly.gb", window="null")
 pb.set_emulation_speed(0)
 mem = pb.memory
 for _ in range(120): pb.tick()
