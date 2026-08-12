@@ -1,4 +1,4 @@
-# PIRATE LORE — a content reference for SEAFARER
+# PIRATE LORE — a content reference for PIRATE'S FOLLY
 
 Compiled from web research (Wikipedia: Golden Age of Piracy, Pirate code, Jolly Roger,
 Davy Jones' locker, Buried treasure, Libertalia, Sailors' superstitions; Smithsonian
@@ -247,7 +247,7 @@ period, peg-leg + hook + eye-patch + parrot composite (Long John Silver).
 Use both lists freely — players expect the Hollywood patina; period terms give it
 ballast.
 
-## 10. Ready-to-use hooks for SEAFARER
+## 10. Ready-to-use hooks for PIRATE'S FOLLY
 
 - **Guardian identities**: each of the Nine Isles could be haunted/defended by a
   legend: Blackbeard's ghost (beard of smoke), Bellamy's storm-wreck, Roberts in

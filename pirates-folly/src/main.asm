@@ -1,0 +1,533 @@
+; PIRATE'S FOLLY — M0 generator demo
+; Seed editor (d-pad edits 8 hex digits, A generates) → island view
+; (A = random new seed, B = back to editor).
+
+INCLUDE "hardware.inc"
+INCLUDE "defs.inc"
+INCLUDE "text.inc"
+
+SECTION "Reset vector", ROM0[$0000]
+    jp EntryPoint               ; for emulators that skip the boot ROM
+
+SECTION "VBlank vector", ROM0[$0040]
+    jp VBlankHandler
+
+SECTION "Header", ROM0[$0100]
+    nop
+    jp EntryPoint
+    ds $0150 - @, 0
+
+SECTION "Shared WRAM", WRAM0
+wVBlankFlag::   db
+wFrameCounter:: db
+wState::        db
+wCursor::       db
+wRepCtr::       db
+wRepEff::       db
+wJoyHeld::      db
+wJoyNew::       db
+wSeed::         ds 4           ; nibbles n0..n7, big-endian pairs
+wSeedNib::      ds 8
+wSeed16::      dw             ; seed folded to 16 bits for the generator
+wRngState::    dw
+wIsCGB::       db             ; $11 = CGB/AGB (boot ROM leaves it in a)
+
+SECTION "Main", ROM0[$0150]
+EntryPoint:
+    di
+    ld [wIsCGB], a               ; boot ROM: $11 on CGB/AGB, $01 on DMG
+    ld sp, $E000
+
+.waitVb                          ; LCD is on after boot ROM; find VBlank
+    ldh a, [rLY]
+    cp 144
+    jr c, .waitVb
+    xor a
+    ldh [rLCDC], a               ; LCD off (safe: in VBlank)
+
+    ; try to load a saved game BEFORE drawing: hint text depends on it
+    call LoadGame
+    ld a, [wHasSave]
+    and a
+    jr z, .noSave
+    call SplitSeedNibbles        ; show the loaded seed in the editor
+    call ComputeIsles            ; isles are derived, never saved
+.noSave
+
+    call SoundInit
+    call LoadTiles
+    call CGBInit                 ; palettes + attrmaps (no-op on DMG)
+    call DrawTitleScreen
+    ld a, SONG_TITLE
+    call SetSong
+    ld a, STATE_TITLE
+    ld [wState], a               ; boot into the title, not the editor
+
+    ; copy the OAM DMA routine into HRAM
+    ld hl, RunDmaROM
+    ld de, hOamDma
+    ld b, RunDmaROM.end - RunDmaROM
+.dmaCopy
+    ld a, [hli]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .dmaCopy
+
+    ; clear shadow OAM (all 40 objects hidden)
+    ld hl, wShadowOAM
+    ld b, 160
+    xor a
+.oamClr
+    ld [hli], a
+    dec b
+    jr nz, .oamClr
+
+    ld a, %11100100              ; canonical BGP: 3=black ... 0=white
+    ldh [rBGP], a
+    ldh [rOBP0], a               ; player objects: same
+    ld a, %11111000              ; pirate objects: dark hull
+    ldh [rOBP1], a
+
+    ; default seed DEADBEEF
+    ld hl, DefaultSeedNibs
+    ld de, wSeedNib
+    ld b, 8
+.copySeed
+    ld a, [hli]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .copySeed
+
+    ; init runtime RNG from DIV jitter; must be nonzero for xorshift
+    ldh a, [rDIV]
+    ld h, a
+    ldh a, [rDIV]
+    xor $5A
+    ld l, a
+    or h
+    jr nz, .rngOk
+    ld l, $39
+.rngOk
+    ld a, h
+    ld [wRngState], a
+    ld a, l
+    ld [wRngState+1], a
+
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    xor a
+    ldh [rIF], a
+    ld a, IE_VBLANK
+    ldh [rIE], a
+    ei
+
+MainLoop:
+    halt                         ; only VBlank is enabled: wakes once/frame
+    ld a, [wVBlankFlag]
+    and a
+    jr z, MainLoop
+    xor a
+    ld [wVBlankFlag], a
+    ld hl, wFrameCounter
+    inc [hl]
+    call UpdateSound
+    ld a, [wState]
+    cp STATE_TITLE
+    jr z, .title
+    cp STATE_SAIL
+    jr z, .sail
+    cp STATE_CHART
+    jr z, .chart
+    cp STATE_PORT
+    jr z, .port
+    cp STATE_DIG
+    jr z, .dig
+    cp STATE_WIN
+    jr z, .win
+    call ReadJoypad
+    call ComputeRepeat
+    call UpdateEdit
+    jr MainLoop
+.sail
+    call SailVBlank              ; time-critical: runs inside VBlank
+    call ReadJoypad
+    call UpdateSail
+    jr MainLoop
+.chart
+    call ReadJoypad
+    call UpdateChart
+    jr MainLoop
+.port
+    call ReadJoypad
+    call UpdatePort
+    jr MainLoop
+.dig
+    call ReadJoypad
+    call UpdateDig
+    jr MainLoop
+.win
+    call ReadJoypad
+    call UpdateWin
+    jr MainLoop
+.title
+    call ReadJoypad
+    call UpdateTitle
+    jr MainLoop
+
+VBlankHandler:
+    push af
+    ld a, 1
+    ld [wVBlankFlag], a
+    pop af
+    reti
+
+; ---------------------------------------------------------------------------
+; Seed editor state
+; ---------------------------------------------------------------------------
+UpdateEdit:
+    ; LEFT/RIGHT move the digit cursor
+    ld a, [wRepEff]
+    and PADF_RIGHT
+    jr z, .notRight
+    ld a, [wCursor]
+    inc a
+    and 7
+    ld [wCursor], a
+.notRight
+    ld a, [wRepEff]
+    and PADF_LEFT
+    jr z, .notLeft
+    ld a, [wCursor]
+    dec a
+    and 7
+    ld [wCursor], a
+.notLeft
+    ; UP/DOWN change the selected nibble
+    ld a, [wRepEff]
+    and PADF_UP
+    jr z, .notUp
+    call GetNibblePtr
+    ld a, [hl]
+    inc a
+    and $0F
+    ld [hl], a
+.notUp
+    ld a, [wRepEff]
+    and PADF_DOWN
+    jr z, .notDown
+    call GetNibblePtr
+    ld a, [hl]
+    dec a
+    and $0F
+    ld [hl], a
+.notDown
+    ; A = new game, START = continue loaded game
+    ld a, [wJoyNew]
+    and PADF_START
+    jr z, .notStart
+    ld a, [wHasSave]
+    and a
+    jr z, .notStart
+    call EnterSail               ; continue (vars already loaded)
+    ld a, STATE_SAIL
+    ld [wState], a
+    ret
+.notStart
+    ld a, [wJoyNew]
+    and PADF_A
+    jr z, .render
+    call ComposeSeed
+    call FoldSeed16
+    call InitNewGame
+    call EnterSail
+    ld a, STATE_SAIL
+    ld [wState], a
+    ret
+.render
+    call RenderSeedRow
+    ret
+
+; hl = wSeedNib + cursor
+GetNibblePtr:
+    ld a, [wCursor]
+    ld l, a
+    ld h, 0
+    ld de, wSeedNib
+    add hl, de
+    ret
+
+; wSeedNib (8 nibbles) -> wSeed (4 bytes)
+ComposeSeed:
+    ld hl, wSeedNib
+    ld de, wSeed
+    ld b, 4
+.loop
+    ld a, [hli]
+    swap a                       ; n -> n<<4
+    or [hl]
+    inc hl
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .loop
+    ret
+
+; wSeed16 = Mix16(b0:b1) + Mix16(b2:b3). A plain XOR fold collapses every
+; repeated-pattern seed (00000000 = FFFFFFFF = AAAAAAAA = ...) to $0000.
+FoldSeed16::
+    ld a, [wSeed]
+    ld h, a
+    ld a, [wSeed+1]
+    ld l, a
+    call Mix16
+    push hl
+    ld a, [wSeed+2]
+    ld h, a
+    ld a, [wSeed+3]
+    ld l, a
+    call Mix16
+    pop de
+    add hl, de
+    ld a, h
+    ld [wSeed16], a
+    ld a, l
+    ld [wSeed16+1], a
+    ret
+
+; Draws digits (tilemap row 2) + blinking cursor (row 3). VBlank or LCD-off only.
+RenderSeedRow::
+    ld hl, wSeedNib
+    ld de, $9800 + 2 * 32 + 6
+    ld b, 8
+.digitLoop
+    ld a, [hli]
+    add TILE_HEX0
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .digitLoop
+    ld a, [wFrameCounter]
+    and %00010000                ; blink at ~2 Hz
+    ld c, a
+    ld de, $9800 + 3 * 32 + 6
+    ld b, 0                      ; column index
+.cursorLoop
+    ld a, [wCursor]
+    cp b
+    jr nz, .blank
+    ld a, c
+    and a
+    jr z, .blank
+    ld a, TILE_CURSOR
+    jr .store
+.blank
+    ld a, TILE_BLANK
+.store
+    ld [de], a
+    inc de
+    inc b
+    ld a, b
+    cp 8
+    jr nz, .cursorLoop
+    ret
+
+; ---------------------------------------------------------------------------
+; Screen helpers
+; ---------------------------------------------------------------------------
+
+; Poll for the START of VBlank. LCD must be on.
+WaitVBlankPoll::
+.waitOut
+    ldh a, [rLY]
+    cp 144
+    jr nc, .waitOut
+.waitIn
+    ldh a, [rLY]
+    cp 144
+    jr c, .waitIn
+    ret
+
+; Fill the whole BG map with TILE_BLANK. LCD must be off.
+; On CGB also clears the attribute bank (text screens use palette 0).
+DrawSeedScreen::
+    ld hl, $9800
+    ld bc, 1024
+.loop
+    xor a
+    ld [hli], a
+    dec bc
+    ld a, b
+    or c
+    jr nz, .loop
+    ld a, [wIsCGB]
+    and a
+    ret z
+    ld a, 1
+    ldh [rVBK], a
+    ld hl, $9800
+    ld bc, 1024
+.aloop
+    xor a
+    ld [hli], a
+    dec bc
+    ld a, b
+    or c
+    jr nz, .aloop
+    xor a
+    ldh [rVBK], a
+    ret
+
+; Editor-only continue hint (when a save exists). LCD off or VBlank.
+DrawSeedHints::
+    ld a, [wHasSave]
+    and a
+    ret z
+    ld hl, StrNewGame
+    ld de, $9800 + 5 * 32 + 5
+    call PrintStr
+    ld hl, StrLoadGame
+    ld de, $9800 + 6 * 32 + 5
+    call PrintStr
+    ret
+
+; LCD-off redraw of the editor screen, LCD back on.
+ShowSeedScreen::
+    call WaitVBlankPoll
+    xor a
+    ldh [rLCDC], a
+    ldh [rSCX], a
+    ldh [rSCY], a
+    call DrawSeedScreen
+    call DrawSeedHints
+    call RenderSeedRow
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    ret
+
+; wSeed (4 bytes) -> wSeedNib (8 nibbles)
+SplitSeedNibbles:
+    ld hl, wSeed
+    ld de, wSeedNib
+    ld b, 4
+.loop
+    ld a, [hl]
+    swap a
+    and $0F
+    ld [de], a
+    inc de
+    ld a, [hli]
+    and $0F
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .loop
+    ret
+
+; Fresh game state (new game from the editor).
+InitNewGame:
+    ld a, LOW(GOLD_START)
+    ld [wGold], a
+    ld a, HIGH(GOLD_START)
+    ld [wGold+1], a
+    ld a, HULL_MAX
+    ld [wHull], a
+    ld a, 5
+    ld [wCrew], a
+    xor a
+    ld [wCargo], a
+    ld [wCargo+1], a
+    ld [wCargo+2], a
+    ld [wCargo+3], a
+    ld [wLastPortDX], a
+    ld [wLastPortDY], a
+    ld [wFragMask], a
+    ld [wFragMask+1], a
+    ld [wGuardMask], a
+    ld [wGuardMask+1], a
+    ld [wFinal], a
+    ld [wWon], a
+    ld [wIsGuardian], a
+    ld hl, wExplored             ; + wPortCells (contiguous, 64 B total)
+    ld b, 64
+.clr
+    ld [hli], a
+    dec b
+    jr nz, .clr
+    ld a, 1
+    ld [wNeedSpawn], a           ; pick a fresh spawn
+    call ComputeIsles
+    ret
+
+; New random seed into wSeed + wSeedNib + wSeed16.
+RandomizeSeed:
+    call Rand16
+    ld a, h
+    ld [wSeed], a
+    ld a, l
+    ld [wSeed+1], a
+    call Rand16
+    ld a, h
+    ld [wSeed+2], a
+    ld a, l
+    ld [wSeed+3], a
+    call SplitSeedNibbles
+    call FoldSeed16
+    ret
+
+; ---------------------------------------------------------------------------
+; Title screen (M6)
+; ---------------------------------------------------------------------------
+
+; LCD-off draw of the title. Sea rows + a ship, then text.
+DrawTitleScreen::
+    call DrawSeedScreen            ; clear to blank (LCD off)
+    ; two sea rows at the bottom
+    ld hl, $9800 + 14 * 32
+    ld b, 64
+.sea
+    ld a, TILE_DEEP
+    ld [hli], a
+    dec b
+    jr nz, .sea
+    ; a lone ship on the horizon
+    ld a, TILE_SHIP_S
+    ld [$9800 + 13 * 32 + 9], a
+    ld hl, StrTitle
+    ld de, $9800 + 4 * 32 + 3
+    call PrintStr
+    ld hl, StrTitleSub1
+    ld de, $9800 + 6 * 32 + 4
+    call PrintStr
+    ld hl, StrTitleSub2
+    ld de, $9800 + 7 * 32 + 3
+    call PrintStr
+    ld hl, StrTitleSub3
+    ld de, $9800 + 9 * 32 + 2
+    call PrintStr
+    ld hl, StrPressStart
+    ld de, $9800 + 12 * 32 + 4
+    call PrintStr
+    ret
+
+; Any A/START press -> seed editor.
+UpdateTitle::
+    ld a, [wJoyNew]
+    and PADF_A | PADF_START
+    ret z
+    call ShowSeedScreen
+    xor a
+    ld [wState], a                 ; STATE_EDIT
+    ret
+
+SECTION "Default data", ROM0
+DefaultSeedNibs:
+    db $D, $E, $A, $D, $B, $E, $E, $F
+StrNewGame:  db "A  NEW GAME", 0
+StrLoadGame: db "START LOAD", 0
+StrTitle:    db "PIRATES FOLLY", 0
+StrTitleSub1: db "A PROCEDURAL", 0
+StrTitleSub2: db "PIRATE VOYAGE", 0
+StrTitleSub3: db "65536 SEAS AWAIT", 0
+StrPressStart: db "PRESS START", 0

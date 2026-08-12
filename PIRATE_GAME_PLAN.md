@@ -1,4 +1,4 @@
-# Project: **SEAFARER** (working title)
+# Project: **PIRATE'S FOLLY**
 ### A procedurally-generated pirate exploration game for the Game Boy
 
 Planning document. Hardware facts reference `GAMEBOY_DEV_GUIDE.md`; toolchain facts reference `RGBDS_GUIDE.md`.
