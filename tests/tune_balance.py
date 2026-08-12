@@ -4,9 +4,13 @@
 #   2. Automated duels: stationary auto-firing player vs a pirate (3 HP,
 #      90-frame gun cooldown) and a guardian (5 HP, 60-frame cooldown).
 #      Reports frames-to-sink and hull lost per duel.
+from pathlib import Path
+
 from pyboy import PyBoy
-ROM = "/home/spencer/Repositories/gb/pirates_folly.gb"
-SYM = "/home/spencer/Repositories/gb/build/pirates_folly.sym"
+
+ROOT = Path(__file__).resolve().parents[1]
+ROM = str(ROOT / "pirates_folly.gb")
+SYM = str(ROOT / "build" / "pirates_folly.sym")
 syms = {}
 for line in open(SYM):
     p = line.split()

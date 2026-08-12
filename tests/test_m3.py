@@ -1,8 +1,12 @@
 import sys
+from pathlib import Path
+
 from pyboy import PyBoy
 
-ROM = "/home/spencer/Repositories/gb/pirates_folly.gb"
-SYM = "/home/spencer/Repositories/gb/build/pirates_folly.sym"
+ROOT = Path(__file__).resolve().parents[1]
+
+ROM = str(ROOT / "pirates_folly.gb")
+SYM = str(ROOT / "build" / "pirates_folly.sym")
 
 def load_symbols():
     syms = {}
