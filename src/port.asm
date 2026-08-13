@@ -1162,7 +1162,19 @@ PrintDec3::
     ret
 
 ; hl = value -> 4 decimal digits at de. clobbers a, b, c, de, hl
+; Values above 9999 are clamped (the field is only 4 tiles wide).
 PrintDec4::
+    ld a, h
+    cp HIGH(9999)
+    jr c, .inRange
+    jr nz, .cap
+    ld a, l
+    cp LOW(9999)
+    jr c, .inRange
+    jr z, .inRange
+.cap
+    ld hl, 9999
+.inRange
     ld bc, 1000
     call DivHL
     add TILE_HEX0
