@@ -32,8 +32,9 @@ wNpY:       db
 wCandX::    db          ; candidate district under test
 wCandY::    db
 wNpFound:   db
-wNpDays:    db
-wNpDir:     db
+; wNpDays/wNpDir are the isles.asm exports (shared): FindNearestPort and
+; FindNearestIsle each write them right before their print, and the tavern
+; prints the port line before the isle line, so one pair serves both.
 
 SECTION "Ports", ROM0
 
