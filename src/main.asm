@@ -103,7 +103,10 @@ EntryPoint:
     ld a, %11111000              ; pirate objects: dark hull
     ldh [rOBP1], a
 
-    ; default seed DEADBEEF
+    ; default seed DEADBEEF (a loaded save keeps its own seed in the editor)
+    ld a, [wHasSave]
+    and a
+    jr nz, .seedDone
     ld hl, DefaultSeedNibs
     ld de, wSeedNib
     ld b, 8
@@ -113,6 +116,7 @@ EntryPoint:
     inc de
     dec b
     jr nz, .copySeed
+.seedDone
 
     ; init runtime RNG from DIV jitter; must be nonzero for xorshift
     ldh a, [rDIV]
