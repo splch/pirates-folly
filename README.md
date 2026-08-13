@@ -118,11 +118,9 @@ src/            RGBDS assembly (the whole game is hand-written SM83)
   rng.asm       Mul8, Mix16 coordinate hash, xorshift16 PRNG
   joypad.asm    input with new-press detection and auto-repeat
   defs.inc      shared constants (states, tiles, tuning knobs)
-  gen.asm, testmap.asm   legacy M0/M1 generator-lab artifacts (not built)
 tests/          PyBoy headless test suite + world lint + balance tuner
 res/            SGB border art (256x224 PNGs)
-tools/          png2sgb.py (SGB border converter), gen_testmap.py (legacy),
-                vendored RGBDS (gitignored)
+tools/          png2sgb.py (SGB border converter), vendored RGBDS (gitignored)
 docs/           PIRATE_GAME_PLAN.md, PIRATE_LORE.md, dev references
 MANUAL.md       the player's manual
 ```

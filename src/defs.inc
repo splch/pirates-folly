@@ -116,7 +116,3 @@ DEF E_SHALLOW_MAX EQU 148     ; shallow water
 DEF E_SAND_MAX    EQU 158     ; beach
 DEF E_GRASS_MAX   EQU 205     ; grass; above: forest/mountain sprinkle
 
-; --- Generator tuning knobs (M0 is for tuning these!) ---
-DEF GEN_BASE_CHANCE EQU 176   ; land chance at map center, out of 256
-DEF GEN_CA_ITERS    EQU 3     ; cellular automata smoothing passes
-DEF GEN_SALT_LAND   EQU $4A2B ; hash salt for land generation
