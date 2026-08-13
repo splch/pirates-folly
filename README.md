@@ -30,14 +30,14 @@ then flash it to a cartridge or open it in any Game Boy emulator
 |---|---|---|---|
 | D-pad | Sail (momentum — ease off!) | Menus | Edit seed digits |
 | A | Dock at a beach / fire cannons / **dig** on an isle | Confirm / buy (RIGHT) | New game (seed screen) |
-| B | — | Back / set sail | — |
+| B | Quit to seed screen (unsaved) | Back / set sail | — |
 | START | **The chart** (your map fills in as you explore) | — | Continue a saved game |
 
-- **Eight hex digits, one ocean.** `DEADBEEF` is a fine first sea. **A** rolls
-  a new voyage; **START** continues a saved one (the game autosaves whenever
-  you dock or leave port, and on victory).
+- **Eight hex digits, one ocean.** `DEADBEEF` is a fine first sea. **A** starts
+  a new voyage with the edited seed; **START** continues a saved one (the game
+  autosaves whenever you dock or leave port, and on victory).
 - **Chart everything.** Sailing into a new cell inks it into your map. Newly
-  charted waters may hold pirates (~1 in 5) or storms — isle cells roll no
+  charted waters may hold pirates (~1 in 5, ≈19%) or storms — isle cells roll no
   random encounters, but their guardians will find you.
 - **Spot ports from the sea**: beaches with plank-dock tiles are dockable.
   Trade four goods (rum, silk, spice, cannon), repair the hull, recruit crew,
