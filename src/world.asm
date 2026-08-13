@@ -25,7 +25,8 @@ wK:             db
 wFX:            db
 wFY:            db
 wWX::           dw          ; current tile x (generation/detail)
-wGRrow::        db          ; current tile y
+wGRrow::        db          ; current tile y (low byte; detail hash)
+wGRrowH:        db          ; current tile y, high byte (world rows 256-287)
 wH00:           db
 wH10:           db
 wH01:           db
@@ -303,10 +304,15 @@ DockTileIfPort:
     srl h
     rr l
     ld b, l                       ; dx = wx / 4
+    ld a, [wGRrowH]
+    ld h, a
     ld a, [wGRrow]
-    srl a
-    srl a
-    ld c, a                       ; dy = wy / 4
+    ld l, a
+    REPT 2
+    srl h
+    rr l
+    ENDR
+    ld c, l                       ; dy = wy / 4 (full 9-bit wy)
     call HasPortHash
     and a
     ld a, TILE_SAND
@@ -320,6 +326,9 @@ GenRowStage::
     ld a, e
     ld [wStageRow], a            ; low byte: &31 works (256 mod 32 = 0)
     ld [wGRrow], a
+    ld a, d
+    ld [wGRrowH], a
+    ld a, e
     and 7
     ld [wFY], a
     ld l, e
@@ -554,13 +563,20 @@ GenColStage::
     ld a, [wTileY]
     ld hl, wK
     add a, [hl]
-    ld [wGRrow], a               ; wy (8-bit; <= 287 by camera clamp)
-    and 7
-    ld [wFY], a
+    ld [wGRrow], a               ; wy low byte (detail hash)
+    ld a, [wTileY+1]
+    adc 0
+    ld [wGRrowH], a              ; wy high byte (rows 256-287)
+    ld h, a
     ld a, [wGRrow]
-    srl a
-    srl a
-    srl a
+    ld l, a                      ; hl = wy, full 9 bits (<= 287 by camera clamp)
+    and 7                        ; a = wy & 7 (h/l keep wy)
+    ld [wFY], a
+    REPT 3
+    srl h
+    rr l
+    ENDR                           ; hl = wy >> 3
+    ld a, l
     ld hl, wIY0
     sub [hl]
     ld e, a
