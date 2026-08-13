@@ -62,7 +62,7 @@ make                       # uses tools/rgbds/bin/ by default
 make RGBDS=/path/to/bin/   # use your own RGBDS install
 ```
 
-Output: `pirates_folly.gb` (32 KiB, MBC5+RAM+BATTERY) plus `build/` artifacts
+Output: `pirates_folly.gb` (64 KiB, MBC5+RAM+BATTERY) plus `build/` artifacts
 (symbol and map files used by the test suite).
 
 ### Web build
