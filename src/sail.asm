@@ -504,32 +504,38 @@ ClampVel:
     sub $80
     ret
 
-; Drag: a -= a/32. With no thrust, nudges by 1 so ships fully stop;
-; while thrusting there is no low-speed drag (else thrust never wins).
+; Drag: a -= sign(a) * |a|/32 (truncate toward zero; sra would floor, and
+; floor(v/32) = -1 for every v in [-32,-1], exactly canceling 1/frame
+; thrust — that pinned negative velocity at 0 and made west/north
+; unsailable). With no thrust, nudges by 1 so ships fully stop; while
+; thrusting there is no low-speed drag (else thrust never wins).
 ; in: a = velocity, b = thrust flag (nonzero = thrusting); out: a = new velocity
 Drag:
     and a
     ret z
-    ld c, a
-    sra a
-    sra a
-    sra a
-    sra a
-    sra a                          ; vel / 32 (floor)
-    jr nz, .haveDrag
+    ld c, a                      ; c = vel (signed)
+    bit 7, a
+    jr z, .mag
+    cpl
+    inc a
+.mag                             ; a = |vel|
+    REPT 5
+    srl a
+    ENDR                           ; a = |vel| / 32
+    jr nz, .haveMag
     ld a, b
     and a
     jr nz, .noDrag                 ; thrusting: skip the nudge
-    bit 7, c
-    jr z, .nudgePos
-    ld a, -1
-    jr .haveDrag
-.nudgePos
     ld a, 1
-.haveDrag
+.haveMag                         ; a = drag magnitude (toward zero)
+    bit 7, c
+    jr z, .pos
+    add c                          ; vel < 0: vel + mag
+    ret
+.pos
     ld b, a
     ld a, c
-    sub b                          ; vel - drag
+    sub b                          ; vel > 0: vel - mag
     ret
 .noDrag
     ld a, c
