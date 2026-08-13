@@ -30,6 +30,13 @@ wStormDmgT:     db
 wEvX:           db              ; enemy move temps
 wEvY:           db
 wEvC:           db              ; enemy chebyshev range (fire control)
+wLoX0:          db              ; LOS sampling: enemy tile
+wLoY0:          db
+wLoDX:          dw              ; LOS sampling: signed tile deltas
+wLoDY:          dw
+wLoI:           db              ; LOS sampling: sample index
+wLosT:          db              ; frames until next LOS check
+wNoLOS:         db              ; consecutive failed LOS checks
 
 SECTION "Combat", ROM0
 
@@ -192,6 +199,9 @@ SpawnEnemy::
     ld [wEnemyFireCool], a
     xor a
     ld [wIsGuardian], a            ; normal pirate, not a guardian
+    ld [wNoLOS], a
+    ld a, 16
+    ld [wLosT], a
     ; wEnemyY = ey << 4 (ey in hl)
     REPT 4
     add hl, hl
@@ -544,6 +554,31 @@ UpdateEnemy:
     ld a, [wEnemyActive]
     and a
     ret z
+    ; LOS watchdog: an enemy that has had no clear line to the ship for a
+    ; long time (stuck behind land, e.g. spawned into a disconnected
+    ; lagoon) gives up and despawns, so it can respawn somewhere useful
+    ld a, [wLosT]
+    and a
+    jr z, .doLOS
+    dec a
+    ld [wLosT], a
+    jr .losDone
+.doLOS
+    ld a, 16
+    ld [wLosT], a
+    call HasLOS
+    and a
+    jr nz, .losClear
+    ld a, [wNoLOS]
+    inc a
+    ld [wNoLOS], a
+    cp 40                          ; ~640 frames without a shot line
+    jp nc, .despawn
+    jr .losDone
+.losClear
+    xor a
+    ld [wNoLOS], a
+.losDone
     ; dx/dy as signed bytes (clamped); NOTE: EnemyDyByte clobbers b!
     call EnemyDxByte
     ld [wEvX], a                   ; stash dx
@@ -1145,6 +1180,146 @@ RenderCombat::
 .hide
     xor a
     ld [hl], a
+    ret
+
+; a = 1 iff the enemy has a clear tile line to the ship (samples the
+; quarter points; any land tile blocks). Clobbers a, b, c, d, e, h, l.
+HasLOS:
+    ; enemy tile -> wLoX0/wLoY0
+    ld a, [wEnemyX]
+    ld l, a
+    ld a, [wEnemyX+1]
+    ld h, a
+    REPT 7
+    srl h
+    rr l
+    ENDR                           ; 12.4 -> tile
+    ld a, l
+    ld [wLoX0], a
+    ld a, [wEnemyY]
+    ld l, a
+    ld a, [wEnemyY+1]
+    ld h, a
+    REPT 7
+    srl h
+    rr l
+    ENDR
+    ld a, l
+    ld [wLoY0], a
+    ; dx = shipTileX - enemyTileX (signed)
+    ld a, [wShipX]
+    ld l, a
+    ld a, [wShipX+1]
+    ld h, a
+    REPT 3
+    srl h
+    rr l
+    ENDR
+    ld a, [wLoX0]
+    ld c, a
+    ld b, 0
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, l
+    ld [wLoDX], a
+    ld a, h
+    ld [wLoDX+1], a
+    ; dy = shipTileY - enemyTileY (signed)
+    ld a, [wShipY]
+    ld l, a
+    ld a, [wShipY+1]
+    ld h, a
+    REPT 3
+    srl h
+    rr l
+    ENDR
+    ld a, [wLoY0]
+    ld c, a
+    ld b, 0
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, l
+    ld [wLoDY], a
+    ld a, h
+    ld [wLoDY+1], a
+    ; sample i = 1..3: point = base + (delta >> 2) * i
+    ld a, 1
+    ld [wLoI], a
+.sample
+    ; --- x ---
+    ld a, [wLoDX]
+    ld l, a
+    ld a, [wLoDX+1]
+    ld h, a
+    sra h
+    rr l
+    sra h
+    rr l                           ; hl = dx/4 (floor)
+    ld c, l
+    ld b, h                          ; bc = dx/4
+    ld a, [wLoI]
+.xMul
+    dec a
+    jr z, .xDone
+    add hl, bc
+    jr .xMul
+.xDone
+    ld a, [wLoX0]
+    ld c, a
+    ld a, l
+    add c
+    ld l, a
+    ld a, h
+    adc 0
+    ld h, a                          ; hl = sample x (tile, in-world)
+    push hl
+    ; --- y ---
+    ld a, [wLoDY]
+    ld l, a
+    ld a, [wLoDY+1]
+    ld h, a
+    sra h
+    rr l
+    sra h
+    rr l
+    ld c, l
+    ld b, h
+    ld a, [wLoI]
+.yMul
+    dec a
+    jr z, .yDone
+    add hl, bc
+    jr .yMul
+.yDone
+    ld a, [wLoY0]
+    ld c, a
+    ld a, l
+    add c
+    ld e, a
+    ld a, h
+    adc 0
+    ld d, a                          ; de = sample y (tile)
+    pop bc                           ; bc = sample x
+    call WorldTile
+    cp TILE_SAND
+    jr c, .nextSample                ; water: line still clear
+    xor a                            ; land blocks the line
+    ret
+.nextSample
+    ld a, [wLoI]
+    inc a
+    ld [wLoI], a
+    cp 4
+    jr nz, .sample
+    ld a, 1
     ret
 
 ; hl = |hl| (16-bit absolute value)
