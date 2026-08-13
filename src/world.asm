@@ -18,6 +18,12 @@ wStageColY:     db          ; wTileY (low byte) when the column was staged:
                             ; CheckStream stages X before updating wTileY on
                             ; diagonal crossings, and BlitColStage runs a
                             ; frame later — the live wTileY would be wrong
+wSpX:           dw          ; FindSpawn candidate tile x
+wSpY:           db          ; FindSpawn candidate row
+wSpYC:          db          ; FindSpawn vertical-run cursor
+wSpN:           db          ; FindSpawn run counter
+wSpX2:          dw          ; FindSpawn eastward-run cursor
+wSpRowPtr:      dw          ; FindSpawn row-table cursor
 wLatTop:        ds 5        ; lattice row/column cache
 wLatBot:        ds 5
 wIX0:           db
@@ -895,44 +901,143 @@ BlitColStage::
 ; Spawn: find deep water near the map middle
 ; ---------------------------------------------------------------------------
 
-; Sets wPosX/wPosY to the first deep-water tile along row 144 (step 4)
-; that also has water 4 tiles east (so the ship isn't boxed in).
+; Sets wPosX/wPosY to a spawn in OPEN OCEAN. Candidates step east along a
+; list of rows; a candidate must be deep water with water 4 tiles east, a
+; 24-tile eastward water run, and a 12-tile vertical water run. The plain
+; "first deep tile on row 144" scan could pick a tiny enclosed lake (seed
+; FFFFFFFF spawned in a 218-tile puddle with no path to the ocean).
+SPAWN_ROWS: db 144, 160, 128, 176, 112, 192, 96, 208, 80, 224, 0
+
 FindSpawn::
-    ld bc, 8                       ; wx
-.loop
-    ld de, 144
-    push bc
-    call WorldTile
-    pop bc
-    cp TILE_SHALLOW
-    jr nc, .next                   ; not deep water -> keep looking
-    ; check 4 tiles east
-    push bc
-    ld a, c
-    add 4
-    ld c, a
-    ld a, b
-    adc 0
-    ld b, a
-    ld de, 144
-    call WorldTile
-    pop bc
+    ld a, LOW(SPAWN_ROWS)
+    ld [wSpRowPtr], a
+    ld a, HIGH(SPAWN_ROWS)
+    ld [wSpRowPtr+1], a
+.rowLoop
+    ld a, [wSpRowPtr]
+    ld l, a
+    ld a, [wSpRowPtr+1]
+    ld h, a
+    ld a, [hli]
+    and a
+    jp z, .fallback
+    ld [wSpY], a
+    ld a, l
+    ld [wSpRowPtr], a
+    ld a, h
+    ld [wSpRowPtr+1], a
+    xor a
+    ld [wSpX+1], a
+    ld a, 8
+    ld [wSpX], a
+.cand
+    call .loadX
+    call .tileAtRow                ; current tile must be water
     cp TILE_SAND
-    jr c, .found                   ; water ahead: good spawn
-.next
-    ld a, c
-    add 4
+    jp nc, .next
+    ; eastward water run of >= 24 tiles from wx
+    ld a, [wSpX]
+    ld [wSpX2], a
+    ld a, [wSpX+1]
+    ld [wSpX2+1], a
+    ld a, 24
+    ld [wSpN], a
+.runE
+    ld a, [wSpX2+1]                ; out of world (>= WORLD_W) = land
+    cp HIGH(WORLD_W)
+    jr c, .runEok
+    jp nz, .next
+    ld a, [wSpX2]
+    cp LOW(WORLD_W)
+    jp nc, .next
+.runEok
+    ld a, [wSpX2]
     ld c, a
-    ld a, b
-    adc 0
+    ld a, [wSpX2+1]
     ld b, a
+    call .tileAtRow
+    cp TILE_SAND
+    jp nc, .next                   ; run too short
+    ld a, [wSpX2]
+    inc a
+    ld [wSpX2], a
+    jr nz, .runE2
+    ld a, [wSpX2+1]
+    inc a
+    ld [wSpX2+1], a
+.runE2
+    ld a, [wSpN]
+    dec a
+    ld [wSpN], a
+    jr nz, .runE
+    ; vertical water run (north + south through wx) of >= 24 tiles
+    ld a, 1
+    ld [wSpN], a                   ; total includes the center tile
+    ld a, [wSpY]
+    ld [wSpYC], a
+.runN
+    ld a, [wSpYC]
+    and a
+    jr z, .runNDone                ; top edge stops the run
+    dec a
+    ld [wSpYC], a
+    call .loadX
+    call .tileAtYC
+    cp TILE_SAND
+    jr nc, .runNDone
+    ld a, [wSpN]
+    inc a
+    ld [wSpN], a
+    cp 12
+    jp z, .found
+    jr .runN
+.runNDone
+    ld a, [wSpY]
+    ld [wSpYC], a
+.runS
+    ld a, [wSpYC]
+    cp 250                         ; run cap keeps the 8-bit cursor safe
+    jp nc, .next                   ; bottom edge/short run: next candidate
+    inc a
+    ld [wSpYC], a
+    call .loadX
+    call .tileAtYC
+    cp TILE_SAND
+    jr nc, .runSDone
+    ld a, [wSpN]
+    inc a
+    ld [wSpN], a
+    cp 12
+    jp z, .found
+    jr .runS
+.runSDone
+.next
+    ld a, [wSpX]
+    add 8
+    ld [wSpX], a
+    ld a, [wSpX+1]
+    adc 0
+    ld [wSpX+1], a                 ; loop while wx < WORLD_W - 8 (16-bit)
     cp HIGH(WORLD_W - 8)
-    jr c, .loop
-    ld bc, 16                      ; fallback: west edge
+    jp c, .cand
+    jp nz, .rowLoop
+    ld a, [wSpX]
+    cp LOW(WORLD_W - 8)
+    jp c, .cand
+    jp .rowLoop
+.fallback
+    xor a
+    ld [wSpX+1], a
+    ld a, 16                       ; west edge, like the original scan
+    ld [wSpX], a
+    ld a, 144
+    ld [wSpY], a
 .found
     ; pos = (wx*8, wy*8) px in 12.4 fixed point = (wx<<7, wy<<7)
-    ld l, c
-    ld h, b
+    ld a, [wSpX]
+    ld l, a
+    ld a, [wSpX+1]
+    ld h, a
     REPT 7
     add hl, hl
     ENDR
@@ -940,11 +1045,39 @@ FindSpawn::
     ld [wPosX], a
     ld a, h
     ld [wPosX+1], a
-    ld a, LOW(144 << 7)
+    ld a, [wSpY]
+    ld l, a
+    ld h, 0
+    REPT 7
+    add hl, hl
+    ENDR
+    ld a, l
     ld [wPosY], a
-    ld a, HIGH(144 << 7)
+    ld a, h
     ld [wPosY+1], a
     ret
+
+; bc = wSpX (WorldTile clobbers bc). clobbers a, b, c
+.loadX
+    ld a, [wSpX]
+    ld c, a
+    ld a, [wSpX+1]
+    ld b, a
+    ret
+
+; in: bc = wx, wSpY = row; out: a = tile. clobbers all
+.tileAtRow
+    ld a, [wSpY]
+    ld e, a
+    ld d, 0
+    jp WorldTile                 ; tail: a = WorldTile(bc, de)
+
+; in: bc = wx, wSpYC = row; out: a = tile. clobbers all
+.tileAtYC
+    ld a, [wSpYC]
+    ld e, a
+    ld d, 0
+    jp WorldTile
 
 ; ---------------------------------------------------------------------------
 ; Fog of war + chart
