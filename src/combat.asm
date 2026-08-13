@@ -235,7 +235,7 @@ StartStorm:
     call PlaySfx
     ret
 
-StormTick:
+StormTick::
     ld a, [wStormT]
     ld l, a
     ld a, [wStormT+1]
@@ -530,7 +530,6 @@ EnemyFire:
 ; Per-frame updates
 ; ---------------------------------------------------------------------------
 UpdateCombat::
-    call StormTick
     call UpdateEnemy
     call UpdateBalls
     ld a, [wFireCool]

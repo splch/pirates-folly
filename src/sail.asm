@@ -314,6 +314,9 @@ UpdateSail::
     ld a, [wPosY+1]
     ld [wOldPosY+1], a
     call SailPhysics
+    call StormTick                   ; storm drift is movement: it must run
+                                     ; before the collision check below,
+                                     ; else it drags the ship across land
     call ComputeShipPx
     call SailCollide
     call SailCamera
