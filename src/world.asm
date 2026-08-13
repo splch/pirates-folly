@@ -14,6 +14,10 @@ wStageRowAttrs: ds 21       ; CGB palette per staged tile
 wStageColAttrs: ds 19
 wStageCol:      dw          ; world tile column of staged column
 wStageRow:      db          ; world tile row of staged row
+wStageColY:     db          ; wTileY (low byte) when the column was staged:
+                            ; CheckStream stages X before updating wTileY on
+                            ; diagonal crossings, and BlitColStage runs a
+                            ; frame later — the live wTileY would be wrong
 wLatTop:        ds 5        ; lattice row/column cache
 wLatBot:        ds 5
 wIX0:           db
@@ -477,6 +481,8 @@ GenColStage::
     ld [wWX], a
     ld a, d
     ld [wStageCol+1], a
+    ld a, [wTileY]
+    ld [wStageColY], a         ; blit base row (see wStageColY)
     ld a, e
     and 7
     ld [wFX], a                  ; fixed horizontal frac
@@ -754,7 +760,7 @@ BlitColStage::
     ld c, a
     ld b, 0
     push bc
-    ld a, [wTileY]
+    ld a, [wStageColY]
     and 31
     call MapRowAddr
     pop bc
@@ -763,7 +769,7 @@ BlitColStage::
     pop de                       ; de = dst
     ld hl, wStageColTiles
     ; run1 = min(19, 32 - startRow)
-    ld a, [wTileY]
+    ld a, [wStageColY]
     and 31
     ld c, a
     ld a, 32
@@ -823,7 +829,7 @@ BlitColStage::
     ld c, a
     ld b, 0
     push bc
-    ld a, [wTileY]
+    ld a, [wStageColY]
     and 31
     call MapRowAddr
     pop bc
@@ -831,7 +837,7 @@ BlitColStage::
     push hl
     pop de
     ld hl, wStageColAttrs
-    ld a, [wTileY]
+    ld a, [wStageColY]
     and 31
     ld c, a
     ld a, 32
