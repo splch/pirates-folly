@@ -376,7 +376,9 @@ ClampHLSigned:
     jr z, .pos
     ld a, h
     cp $FF
-    jr nz, .big
+    jr nz, .big                      ; < -256
+    bit 7, l
+    jr z, .big                       ; -256..-129 (h=$FF alone is not enough)
     ld a, l
     ret
 .big
@@ -385,7 +387,9 @@ ClampHLSigned:
 .pos
     ld a, h
     and a
-    jr nz, .bigp
+    jr nz, .bigp                     ; >= 256
+    bit 7, l
+    jr nz, .bigp                     ; 128..255
     ld a, l
     ret
 .bigp
