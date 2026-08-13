@@ -642,6 +642,10 @@ Wreck::
     ld [wGold], a
     ld a, 10
     ld [wHull], a
+    xor a
+    ld [wStormT], a                ; the storm spends itself on the wreck —
+    ld [wStormT+1], a              ; else it sweeps the respawn into another
+                                   ; wreck, over and over
     ; wreck message
     call WaitVBlankPoll
     xor a
