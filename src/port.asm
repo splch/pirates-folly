@@ -823,7 +823,7 @@ RenderTavern:
     call FindNearestPort
     ld a, [wNpFound]
     and a
-    jp z, .none
+    jr z, .noPort
     ; line 1: name of that port district
     ld a, [wNpX]
     ld b, a
@@ -854,6 +854,13 @@ RenderTavern:
     ld l, a
     ld de, $9800 + 9 * 32 + 9
     call PrintStr
+    jr .restore
+.noPort
+    ld hl, StrNoRumor
+    ld de, $9800 + 8 * 32 + 1
+    call PrintStr
+    ; fall through: the isle rumor is always worth printing
+.restore
     ; restore current port hash
     ld a, [wPortDX]
     ld b, a
@@ -896,11 +903,6 @@ RenderTavern:
     ld h, [hl]
     ld l, a
     ld de, $9800 + 12 * 32 + 9
-    call PrintStr
-    ret
-.none
-    ld hl, StrNoRumor
-    ld de, $9800 + 8 * 32 + 1
     call PrintStr
     ret
 
@@ -999,7 +1001,7 @@ MainInput:
     and 7
     cp 6
     jr c, .ok1
-    xor a
+    ld a, 5                        ; wrap: item 0 -> bottom item
 .ok1
     ld [wPortMenu], a
     jr .moved
