@@ -54,6 +54,20 @@ EntryPoint:
     call ComputeIsles            ; isles are derived, never saved
 .noSave
 
+    ; power-on WRAM is random on hardware (PyBoy zeroes it, emulators like
+    ; binjgb do not): clear volatile combat/storm state so no phantom
+    ; storm, enemy, or cannonball is already "active" on the first frame
+    xor a
+    ld [wStormT], a
+    ld [wStormT+1], a
+    ld [wStormDX], a
+    ld [wStormDY], a
+    ld [wStormDmgT], a
+    ld [wEnemyActive], a
+    ld [wBallPActive], a
+    ld [wBallEActive], a
+    ld [wCursor], a
+
     call SoundInit
     call LoadTiles
     call CGBInit                 ; palettes + attrmaps (no-op on DMG)

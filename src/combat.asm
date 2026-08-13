@@ -11,7 +11,7 @@ wEnemyY:        dw
 wEnemyHP::      db
 wEnemyFireCool:: db
 wFireCool:      db
-wBallPActive:   db
+wBallPActive::  db
 wBallPX:        dw
 wBallPY:        dw
 wBallPVX:       db              ; signed 1/16 px/frame
@@ -24,9 +24,9 @@ wBallEVX:       db
 wBallEVY:       db
 wBallELife:     db
 wStormT::       dw              ; storm frames remaining
-wStormDX:       db
-wStormDY:       db
-wStormDmgT:     db
+wStormDX::      db
+wStormDY::      db
+wStormDmgT::    db
 wEvX:           db              ; enemy move temps
 wEvY:           db
 wEvC:           db              ; enemy chebyshev range (fire control)
