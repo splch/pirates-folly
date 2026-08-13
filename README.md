@@ -12,7 +12,8 @@ Assemble all nine, survive the final fleet, and the Treasure of the Nine
 Isles is yours.
 
 Runs on DMG, CGB, AGB, SGB, emulators, and Analogue Pocket. DMG-first
-(4 shades), with color palettes auto-detected on CGB.
+(4 shades), with color palettes auto-detected on CGB. On a Super Game Boy
+each sea gets a day or night border, chosen by the seed itself.
 
 ## Playing
 
@@ -89,6 +90,7 @@ python tests/lint_worlds.py    # seed sweep: spawns, isle land, port census
 - `test_title.py` / `test_cgb.py` — title screen, CGB palette init, DMG/CGB parity
 - `test_m2.py` … `test_m5.py` — worldgen/streaming, ports & economy, combat, the Nine Isles
 - `test_sound.py` — APU driver and song/SFX triggers
+- `test_sgb.py` — SGB header/detection, forced-run of the border transfer
 - `test_ports_m6.py` — port content pass
 - `tests/lint_worlds.py` — reimplements the worldgen math in Python and sweeps
   16 seeds against the running ROM, validating spawns land on water, every
@@ -110,13 +112,17 @@ src/            RGBDS assembly (the whole game is hand-written SM83)
   isles.asm     the Nine Isles, digs, final battle, victory
   port.asm      docking, market, tavern, repair/recruit, battery save/load
   sound.asm     3-channel shanty driver + SFX (no hUGEDriver)
+  sgb.asm       SGB border transfer (CHR_TRN/PCT_TRN), seed-picked day/night
+  sgb_day.inc, sgb_night.inc   generated border data (tools/png2sgb.py)
   tiles.asm     hand-drawn 2bpp tiles & 3x5 font (gfx literals), CGB palettes
   rng.asm       Mul8, Mix16 coordinate hash, xorshift16 PRNG
   joypad.asm    input with new-press detection and auto-repeat
   defs.inc      shared constants (states, tiles, tuning knobs)
   gen.asm, testmap.asm   legacy M0/M1 generator-lab artifacts (not built)
 tests/          PyBoy headless test suite + world lint + balance tuner
-tools/          gen_testmap.py (legacy), vendored RGBDS (gitignored)
+res/            SGB border art (256x224 PNGs)
+tools/          png2sgb.py (SGB border converter), gen_testmap.py (legacy),
+                vendored RGBDS (gitignored)
 docs/           PIRATE_GAME_PLAN.md, PIRATE_LORE.md, dev references
 MANUAL.md       the player's manual
 ```
@@ -138,6 +144,11 @@ MANUAL.md       the player's manual
   districts), port names (16×16 prefix/suffix), market price drift, tavern
   rumors, encounter rolls, and the Nine Isles' positions are all pure hash
   functions of coordinates + seed — deterministic and storage-free.
+- **SGB borders.** On SGB/SGB2 (detected via the boot ROM's C register),
+  the border is beamed over with CHR_TRN/PCT_TRN VRAM transfers while the
+  screen is frozen with MASK_EN: 256 SNES 4bpp tiles, a 32x28+1 map, and
+  three 15-color palettes per border, all generated offline from PNG art.
+  Day or night is bit 0 of `wSeed16` — the sky is part of the world.
 - **Battery save.** MBC5 SRAM at `$A000` with magic bytes, a version field,
   and a checksum; validated on boot. Isle positions are recomputed from the
   seed on load, never saved.

@@ -15,6 +15,10 @@ SECTION "VBlank vector", ROM0[$0040]
 SECTION "Header", ROM0[$0100]
     nop
     jp EntryPoint
+    ds $0146 - @, 0             ; rgbfix -v fills the logo and checksums
+    db $03                      ; $0146: SGB flag — unlock SGB functions
+    ds $014B - @, 0
+    db $33                      ; $014B: old licensee $33 — required for SGB
     ds $0150 - @, 0
 
 SECTION "Shared WRAM", WRAM0
@@ -31,11 +35,14 @@ wSeedNib::      ds 8
 wSeed16::      dw             ; seed folded to 16 bits for the generator
 wRngState::    dw
 wIsCGB::       db             ; $11 = CGB/AGB (boot ROM leaves it in a)
+wIsSGB::       db             ; $14 = SGB/SGB2 (boot ROM leaves it in c)
 
 SECTION "Main", ROM0[$0150]
 EntryPoint:
     di
     ld [wIsCGB], a               ; boot ROM: $11 on CGB/AGB, $01 on DMG
+    ld a, c
+    ld [wIsSGB], a               ; boot ROM: $14 on SGB/SGB2, $13 on DMG/MGB
     ld sp, $E000
 
 .waitVb                          ; LCD is on after boot ROM; find VBlank
@@ -135,6 +142,19 @@ EntryPoint:
 
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
     ldh [rLCDC], a
+    ; SGB: give the title screen the saved voyage's border, if there is one
+    ; (no save: the seed isn't final until the editor, so EnterSail does it)
+    ld a, [wHasSave]
+    and a
+    jr z, .noBorder
+    call SGBTransferBorder
+    and a
+    jr z, .noBorder
+    call DrawTitleScreen         ; redraw what the transfer trashed (LCD off)
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    call SGBUnfreeze
+.noBorder
     xor a
     ldh [rIF], a
     ld a, IE_VBLANK

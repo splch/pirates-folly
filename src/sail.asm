@@ -72,6 +72,12 @@ EnterSail::
     call ComputeShipPx
     call SailCamera
     call SailRedrawBody
+    call SGBTransferBorder       ; the seed is final now: send its border
+    and a
+    jr z, .noSGB                 ; not SGB: nothing was touched
+    call SailRedrawBody          ; rebuild what the transfer trashed
+    call SGBUnfreeze
+.noSGB
     ld a, SONG_SAIL
     call SetSong
     ret

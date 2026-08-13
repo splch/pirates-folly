@@ -8,3 +8,6 @@ tools/rgbds/
 build/
 *.gb
 *.gb.ram
+
+# Python test artifacts
+__pycache__/

@@ -5,7 +5,7 @@ RGBASM := $(RGBDS)rgbasm
 RGBLINK := $(RGBDS)rgblink
 RGBFIX := $(RGBDS)rgbfix
 
-SRC := src/main.asm src/joypad.asm src/rng.asm src/tiles.asm src/sail.asm src/world.asm src/port.asm src/combat.asm src/isles.asm src/sound.asm
+SRC := src/main.asm src/joypad.asm src/rng.asm src/tiles.asm src/sail.asm src/world.asm src/port.asm src/combat.asm src/isles.asm src/sound.asm src/sgb.asm
 OBJ := $(SRC:src/%.asm=build/%.o)
 
 pirates_folly.gb: $(OBJ)
@@ -14,6 +14,14 @@ pirates_folly.gb: $(OBJ)
 
 build/%.o: src/%.asm src/defs.inc src/testmap.inc include/hardware.inc | build
 	$(RGBASM) -o $@ -I include/ -I src/ -Wall $<
+
+build/sgb.o: src/sgb_day.inc src/sgb_night.inc
+
+# Regenerate the SGB border data after editing the art (needs numpy):
+src/sgb_day.inc: res/sgb_day.png tools/png2sgb.py
+	python3 tools/png2sgb.py $< $@ sgb_day 1
+src/sgb_night.inc: res/sgb_night.png tools/png2sgb.py
+	python3 tools/png2sgb.py $< $@ sgb_night 2
 
 build:
 	mkdir -p build
