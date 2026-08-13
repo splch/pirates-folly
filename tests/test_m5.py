@@ -86,8 +86,12 @@ print("isle 0 cell:", isle0)
 tx, ty = find_approach(isle0)
 set16("wPosX", (tx * 8) << 4)
 set16("wPosY", (ty * 8) << 4)
-for _ in range(10):
+# guardian spawn retries one random offset per frame until one lands on
+# water, so poll instead of assuming a fixed frame count
+for _ in range(600):
     pb.tick()
+    if mem[syms["wEnemyActive"]]:
+        break
 print("ship cell:", mem[syms["wShipCX"]], mem[syms["wShipCY"]])
 
 # guardian should have spawned
