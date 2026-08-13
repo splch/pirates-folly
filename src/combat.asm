@@ -695,6 +695,19 @@ UpdateEnemy:
     ld [wEnemyActive], a
     ld [wBallEActive], a
     ld [wShadowOAM + 4], a
+    ; a despawned final-battle guardian must not consume its wave (e.g.
+    ; the player wrecked and respawned far away): hand it back so
+    ; CellWatch spawns it again — otherwise the finale can never be won.
+    ld a, [wIsGuardian]
+    and a
+    ret z
+    ld a, [wFinal]
+    and a
+    ret z
+    cp 4
+    ret z
+    dec a
+    ld [wFinal], a
     ret
 
 ; helper: hl += sign-extend(a). clobbers a, h, l
