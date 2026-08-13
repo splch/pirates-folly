@@ -376,8 +376,8 @@ DrawSeedScreen::
     or c
     jr nz, .loop
     ld a, [wIsCGB]
-    and a
-    ret z
+    cp $11                      ; not CGB: single VRAM bank, no attrs
+    ret nz
     ld a, 1
     ldh [rVBK], a
     ld hl, $9800

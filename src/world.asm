@@ -702,8 +702,8 @@ BlitRowStage::
     jr nz, .r2
 .attrs                          ; CGB: same pass for palette attrs (bank 1)
     ld a, [wIsCGB]
-    and a
-    ret z
+    cp $11                      ; DMG-class HW has one VRAM bank: writing
+    ret nz                      ; attrs there would overwrite the tilemap
     ld a, 1
     ldh [rVBK], a
     ld a, [wStageRow]
@@ -826,8 +826,8 @@ BlitColStage::
     jr nz, .c2
 .attrs                          ; CGB: attribute pass in bank 1
     ld a, [wIsCGB]
-    and a
-    ret z
+    cp $11
+    ret nz
     ld a, 1
     ldh [rVBK], a
     ld a, [wStageCol]
@@ -1329,8 +1329,8 @@ RenderChart:
     ; CGB: matching palette attr (chart shows sea/land colors)
     ld c, a
     ld a, [wIsCGB]
-    and a
-    jr z, .noAttr
+    cp $11
+    jr nz, .noAttr
     push hl
     ld a, c
     call TileAttr
