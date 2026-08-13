@@ -12,7 +12,7 @@ pirates_folly.gb: $(OBJ)
 	$(RGBLINK) -o $@ -n build/pirates_folly.sym -m build/pirates_folly.map -p 0xFF $(OBJ)
 	$(RGBFIX) -v -p 0xFF -t "PIRATES FOLLY" -c -m MBC5+RAM+BATTERY -r 3 $@
 
-build/%.o: src/%.asm src/defs.inc src/testmap.inc include/hardware.inc | build
+build/%.o: src/%.asm src/defs.inc src/text.inc include/hardware.inc | build
 	$(RGBASM) -o $@ -I include/ -I src/ -Wall $<
 
 build/sgb.o: src/sgb_day.inc src/sgb_night.inc
