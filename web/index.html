@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pirate's Folly — play in your browser</title>
+  <style>
+    :root {
+      --bg: #0b1d2a;
+      --panel: #12293a;
+      --ink: #e8dcc3;
+      --accent: #e0a458;
+      --muted: #8fa8b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg) linear-gradient(#0b1d2a, #07121b);
+      color: var(--ink);
+      font-family: Georgia, 'Times New Roman', serif;
+      text-align: center;
+    }
+    header { padding: 2rem 1rem 1rem; }
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      text-shadow: 0 2px 0 #000;
+    }
+    .tagline { color: var(--muted); font-style: italic; margin: 0.5rem 0 0; }
+    main { max-width: 720px; margin: 0 auto; padding: 0 1rem 2rem; }
+    .cabinet {
+      background: var(--panel);
+      border: 3px solid #2a4a5f;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    iframe {
+      width: 100%;
+      height: 640px;
+      border: 0;
+      border-radius: 8px;
+      background: #000;
+    }
+    @media (max-width: 600px) { iframe { height: 78vh; } }
+    .hint { color: var(--muted); font-size: 0.9rem; margin: 0.75rem 0 0; }
+    table.controls {
+      margin: 1.5rem auto 0;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    table.controls td {
+      border: 1px solid #2a4a5f;
+      padding: 0.35rem 0.9rem;
+    }
+    table.controls td:first-child { color: var(--accent); }
+    kbd {
+      background: #1e3a4f; border-radius: 4px; padding: 0 6px;
+      font-family: inherit; border: 1px solid #2a4a5f;
+    }
+    footer { color: var(--muted); font-size: 0.85rem; padding: 1.5rem 1rem 2rem; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>&#9883; PIRATE'S FOLLY</h1>
+    <p class="tagline">A procedurally-generated pirate voyage for the Game Boy &mdash; every sea born from an 8-digit seed.</p>
+  </header>
+  <main>
+    <div class="cabinet">
+      <iframe src="play.html" title="Pirate's Folly — Game Boy emulator" allow="autoplay; gamepad"></iframe>
+    </div>
+    <p class="hint">
+      Click the screen once to enable sound &amp; keys. Progress autosaves in your browser.
+      On touch devices an on-screen gamepad appears.
+    </p>
+    <table class="controls">
+      <tr><td>D-pad</td><td><kbd>&#8592;&#8593;&#8595;&#8594;</kbd></td></tr>
+      <tr><td>A (dock / fire / dig)</td><td><kbd>X</kbd></td></tr>
+      <tr><td>B (back / set sail)</td><td><kbd>Z</kbd></td></tr>
+      <tr><td>START (chart / continue)</td><td><kbd>Enter</kbd></td></tr>
+      <tr><td>SELECT</td><td><kbd>Tab</kbd></td></tr>
+      <tr><td>Fast-forward / Rewind</td><td><kbd>Shift</kbd> / <kbd>Backspace</kbd></td></tr>
+      <tr><td>Save / Load state</td><td><kbd>F6</kbd> / <kbd>F9</kbd></td></tr>
+    </table>
+  </main>
+  <footer>
+    <p>
+      <a href="https://github.com/splch/pirates-folly">Source &amp; manual</a> &middot;
+      Emulator: <a href="https://github.com/binji/binjgb">binjgb</a> (MIT) &middot;
+      Try seed <b>DEADBEEF</b> for a fine first sea.
+    </p>
+  </footer>
+</body>
+</html>

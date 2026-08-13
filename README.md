@@ -16,6 +16,11 @@ Runs on DMG, CGB, AGB, SGB, emulators, and Analogue Pocket. DMG-first
 
 ## Playing
 
+**Play now in your browser**: <https://splch.github.io/pirates-folly/> —
+the ROM runs in a WebAssembly emulator, no install needed. Progress autosaves
+in the browser, and touch devices get an on-screen gamepad.
+
+
 Get `pirates_folly.gb` from a CI artifact or [build it yourself](#building),
 then flash it to a cartridge or open it in any Game Boy emulator
 (BGB, SameBoy, mGBA, PyBoy, ...).
@@ -58,6 +63,17 @@ make RGBDS=/path/to/bin/   # use your own RGBDS install
 
 Output: `pirates_folly.gb` (32 KiB, MBC5+RAM+BATTERY) plus `build/` artifacts
 (symbol and map files used by the test suite).
+
+### Web build
+
+The `web/` directory is a static [binjgb](https://github.com/binji/binjgb)
+(MIT) site deployed to GitHub Pages by `.github/workflows/pages.yml` on every
+push to `main` (the workflow builds the ROM fresh, so the page always ships
+the latest `main`). To preview locally:
+
+```sh
+make && cp pirates_folly.gb web/ && (cd web && python3 -m http.server)
+```
 
 ## Testing
 
