@@ -22,7 +22,9 @@ the ROM runs in a WebAssembly emulator, no install needed. Progress autosaves
 in the browser, and touch devices get an on-screen gamepad.
 
 
-Get `pirates_folly.gb` from a CI artifact or [build it yourself](#building),
+Get `pirates_folly.gb` from the
+[latest rolling release](https://github.com/splch/pirates-folly/releases/tag/latest)
+(rebuilt on every push to `main`) or [build it yourself](#building),
 then flash it to a cartridge or open it in any Game Boy emulator
 (BGB, SameBoy, mGBA, PyBoy, ...).
 

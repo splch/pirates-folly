@@ -37,3 +37,15 @@ jobs:
           name: pirates_folly.gb
           path: pirates_folly.gb
           retention-days: 14
+
+      - name: Update rolling release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          body: |
+            Rolling release, rebuilt on every push to `main`.
+            Download `pirates_folly.gb` and open it in any Game Boy emulator.
+          files: pirates_folly.gb
+          prerelease: true
