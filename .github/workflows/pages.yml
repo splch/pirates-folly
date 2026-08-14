@@ -27,6 +27,9 @@ jobs:
           mkdir -p rgbds-bin
           curl -sL https://github.com/gbdev/rgbds/releases/download/v1.0.3/rgbds-linux-x86_64.tar.xz | tar -xJ -C rgbds-bin
 
+      - name: Install Python deps
+        run: python3 -m pip install numpy
+
       - name: Build ROM
         run: make RGBDS="$PWD/rgbds-bin/"
 
