@@ -173,6 +173,10 @@ TryDock::
     ld a, l
     ld [wPortHash+1], a
     call SaveGame                  ; autosave on dock
+    ld a, SFX_BELL
+    call PlaySfx                   ; harbor bell
+    ld a, SONG_PORT
+    call SetSong                   ; Spanish Ladies was composed but never played
     ; enter port screen
     xor a
     ld [wPortState], a             ; PMAIN
