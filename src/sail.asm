@@ -741,6 +741,16 @@ Wreck::
     dec b
     jr nz, .wait
     call FindSpawn
+    ; the respawn is a discontinuous jump: re-derive ship px and camera so
+    ; SailRedraw fills the window the screen will actually show. Without
+    ; this the fill uses the pre-wreck camera, the camera then snaps to the
+    ; spawn, and CheckStream only patches one edge per frame — the window
+    ; shows stale pre-wreck tiles (land strips in open ocean) indefinitely.
+    xor a
+    ld [wVelX], a                ; a wrecked ship dead-stops (EnterSail parity)
+    ld [wVelY], a
+    call ComputeShipPx
+    call SailCamera
     call SailRedraw
     ret
 

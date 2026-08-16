@@ -811,6 +811,47 @@ def r17_tavern_port_scan():
         f"tavern says '{days} {bearing}', want '{r:02d} {dname}'"
     print(f"R17 tavern port scan ({days} DAYS {bearing}): OK")
 
+# ----------------- R18: wreck respawn fully redraws the visible window
+
+def r18_wreck_respawn_redraw():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    # hull 1, full speed east into the coast: one ram wrecks. The respawn
+    # teleports the ship to open ocean; the redraw must fill the window for
+    # the NEW camera, not the stale pre-wreck one (else stale land strips
+    # persist in open ocean: CheckStream only patches one edge per frame).
+    spot = find_water(s16, 20, 40, 138, 146,
+                      lambda x, y: tile(x + 4, y, s16) >= 3)
+    assert spot, "no ramming spot found"
+    set16(mem, "wPosX", (spot[0] * 8) << 4)
+    set16(mem, "wPosY", (spot[1] * 8) << 4)
+    for _ in range(5):
+        pb.tick()
+    mem[syms["wHull"]] = 1
+    mem[syms["wVelX"]] = 40
+    for _ in range(600):
+        pb.tick()
+        if mem[syms["wHull"]] == 10:     # wrecked and patched
+            break
+    assert mem[syms["wHull"]] == 10, "never wrecked"
+    for _ in range(140):                 # 90f message + respawn redraw
+        pb.tick()
+    tx0, ty0 = w16(mem, "wTileX"), w16(mem, "wTileY")
+    mism = []
+    for j in range(19):
+        for i in range(21):
+            got = vram_tile(mem, tx0 + i, ty0 + j)
+            want = shown_tile(tx0 + i, ty0 + j, s16)
+            if got != want:
+                mism.append((tx0 + i, ty0 + j, got, want))
+    assert not mism, f"post-wreck window: {len(mism)} stale tiles, e.g. {mism[:4]}"
+    assert mem[syms["wVelX"]] == 0 and mem[syms["wVelY"]] == 0, \
+        "wreck respawn kept pre-wreck momentum"
+    pb.stop()
+    print("R18 wreck respawn redraws the visible window: OK")
+
 # --------------------------------- F3: HUD stats line at sea
 
 def f3_hud_stats_line():
@@ -834,7 +875,7 @@ if __name__ == "__main__":
                r8_final_wave_returned, r9_r10_tavern, r11_r12_menu_and_gold,
                r13_boot_clears_state, r14_dig_no_cannon, r15_save_sets_has_save,
                r16_boot_clears_fire_cooldowns, r17_tavern_port_scan,
-               f1_quit_confirm,
+               r18_wreck_respawn_redraw, f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
     print("ALL REGRESSION CHECKS PASSED")
