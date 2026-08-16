@@ -1773,6 +1773,60 @@ def r43_text_screens_reset_scroll():
     pb.stop()
     print("R43 text screens reset scroll: OK")
 
+# ----------------- R44: a port shore is a docking bump, not a wreck
+
+def r44_port_shore_is_soft():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    dx, dy = find_dockable_port(s16)
+    # a water tile next to the district's beach, facing it
+    spot = None
+    for ty in range(dy * 4, dy * 4 + 4):
+        for tx in range(dx * 4, dx * 4 + 4):
+            if tile(tx, ty, s16) < 3:
+                continue
+            for ddx, ddy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                nx, ny = tx + ddx, ty + ddy
+                if 0 <= nx < 320 and 0 <= ny < 288 and tile(nx, ny, s16) < 3:
+                    spot = (nx, ny, -ddx, -ddy)
+                    break
+            if spot:
+                break
+        if spot:
+            break
+    assert spot, "no approach water by the port beach"
+    nx, ny, vx, vy = spot
+    assert teleport(pb, nx, ny)
+    mem[syms["wEnemyActive"]] = 0
+    set16(mem, "wStormT", 0)
+    mem[syms["wHull"]] = 20
+    mem[syms["wVelX"]] = (vx * 40) & 0xFF   # full speed at the pier
+    mem[syms["wVelY"]] = (vy * 40) & 0xFF
+    for _ in range(60):
+        pb.tick()
+        mem[syms["wEnemyActive"]] = 0       # keep the shot clean of pirates
+        mem[syms["wBallEActive"]] = 0
+    assert mem[syms["wHull"]] == 20, \
+        f"port ram cost hull ({mem[syms['wHull']]}), want 20"
+    # control: a non-port coast still costs hull
+    coast = find_water(s16, 20, 40, 138, 146,
+                       lambda x, y: tile(x + 4, y, s16) >= 3)
+    assert coast and teleport(pb, *coast)
+    mem[syms["wEnemyActive"]] = 0
+    set16(mem, "wStormT", 0)
+    mem[syms["wHull"]] = 20
+    mem[syms["wVelX"]] = 40
+    mem[syms["wVelY"]] = 0
+    for _ in range(60):
+        pb.tick()
+        mem[syms["wEnemyActive"]] = 0
+        mem[syms["wBallEActive"]] = 0
+    assert mem[syms["wHull"]] < 20, "plain coast ram was free"
+    pb.stop()
+    print("R44 port shore is a soft landing (plain coast still bites): OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1794,6 +1848,7 @@ if __name__ == "__main__":
                r41_merchant_delays_guardian,
                r42_enemy_shot_cant_cross_land,
                r43_text_screens_reset_scroll,
+               r44_port_shore_is_soft,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
