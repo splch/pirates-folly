@@ -51,7 +51,7 @@ wSmokeY:        dw
 wFxX:           dw              ; render scratch (sink slide offset)
 wFxY:           dw
 
-SECTION "Combat", ROM0
+SECTION "Combat", ROMX, BANK[3]
 
 ; ---------------------------------------------------------------------------
 ; Encounter rolls (called when a cell is newly explored)
@@ -102,8 +102,10 @@ SpawnCheck::
 ; Spawn a pirate ship near the player, in open water. 8 candidate offsets:
 ; far ring first, near ring second (guardians near big islands need options;
 ; callers retry on later frames when the pick lands on land).
+PUSHS "Spawn offset table", ROMX, BANK[3]
 SPAWN_OFF: db 100, 0, 0, 100, -100, 0, 0, -100   ; E S W N
            db  60, 0, 0, 60,  -60, 0, 0,  -60    ; near E S W N
+POPS
 
 SpawnEnemy::
     call Rand16
@@ -273,9 +275,11 @@ StormTick::
     ld a, h
     ld [wStormT+1], a
     ld a, [wStormDX]
-    call AddSignedToPosX
+    ld hl, wPosX
+    call AddSignedToPos
     ld a, [wStormDY]
-    call AddSignedToPosY
+    ld hl, wPosY
+    call AddSignedToPos
     ld a, [wStormDmgT]
     dec a
     ld [wStormDmgT], a
@@ -304,34 +308,20 @@ StormTick::
     ld [wDmgCool], a
     jp Wreck
 
-AddSignedToPosX:
-    ld l, a
-    ld h, 0
+; 16-bit value at hl += sign-extend(a). clobbers a, d, e, hl
+AddSignedToPos:
+    ld e, a
+    ld d, 0
     bit 7, a
     jr z, .p
-    dec h
+    dec d
 .p
-    ld a, [wPosX]
-    add l
-    ld [wPosX], a
-    ld a, [wPosX+1]
-    adc h
-    ld [wPosX+1], a
-    ret
-
-AddSignedToPosY:
-    ld l, a
-    ld h, 0
-    bit 7, a
-    jr z, .p
-    dec h
-.p
-    ld a, [wPosY]
-    add l
-    ld [wPosY], a
-    ld a, [wPosY+1]
-    adc h
-    ld [wPosY+1], a
+    ld a, [hl]
+    add e
+    ld [hli], a
+    ld a, [hl]
+    adc d
+    ld [hl], a
     ret
 
 ; ---------------------------------------------------------------------------
@@ -388,8 +378,26 @@ SnapDir::
     xor a                          ; N
     ret
 
+PUSHS "Direction velocity tables", ROMX, BANK[3]
 DIR_VX: db 0, 34, 48, 34, 0, -34, -48, -34
 DIR_VY: db -48, -34, 0, 34, 48, 34, 0, -34
+POPS
+
+; hl += sign-extend(a). clobbers a, d, e, h, l
+AddSignedHL:
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .p
+    dec d
+.p
+    ld a, l
+    add e
+    ld l, a
+    ld a, h
+    adc d
+    ld h, a
+    ret
 
 ; clamp signed 16-bit hl to signed byte in a
 ClampHLSigned:
@@ -429,9 +437,9 @@ DirVel:
     ld c, [hl]
     ret
 
-; pixel diff: hl = a16-position minus b16-position...
-; computes dx = (wEnemyX>>4) - wShipX clamped, in a
-EnemyDxByte:
+; pixel diffs: b = dx, c = dy (enemy minus ship, each clamped to a signed
+; byte via ClampHLSigned). clobbers a, d, e, h, l
+EnemyDelta:
     ld a, [wEnemyX]
     ld l, a
     ld a, [wEnemyX+1]
@@ -451,9 +459,7 @@ EnemyDxByte:
     sbc b
     ld h, a
     call ClampHLSigned
-    ret
-
-EnemyDyByte:
+    push af
     ld a, [wEnemyY]
     ld l, a
     ld a, [wEnemyY+1]
@@ -473,6 +479,9 @@ EnemyDyByte:
     sbc b
     ld h, a
     call ClampHLSigned
+    ld c, a
+    pop af
+    ld b, a
     ret
 
 ; ---------------------------------------------------------------------------
@@ -492,12 +501,7 @@ FireCannon::
     ld a, [wEnemyActive]
     and a
     jr z, .ahead
-    call EnemyDxByte
-    push af
-    call EnemyDyByte
-    ld c, a
-    pop af
-    ld b, a
+    call EnemyDelta
     call SnapDir
     jr .fire
 .ahead
@@ -540,16 +544,15 @@ EnemyFire:
     ld a, [wBallEActive]
     and a
     ret nz
-    call EnemyDxByte
+    call EnemyDelta
+    ld a, b
     cpl
     inc a                          ; dx = ship - enemy
-    push af
-    call EnemyDyByte
+    ld b, a
+    ld a, c
     cpl
     inc a
     ld c, a
-    pop af
-    ld b, a
     call SnapDir
     call DirVel
     ld a, 1
@@ -627,13 +630,8 @@ UpdateEnemy:
     xor a
     ld [wNoLOS], a
 .losDone
-    ; dx/dy as signed bytes (clamped); NOTE: EnemyDyByte clobbers b!
-    call EnemyDxByte
-    ld [wEvX], a                   ; stash dx
-    call EnemyDyByte
-    ld c, a                        ; c = dy
-    ld a, [wEvX]
-    ld b, a                        ; b = dx
+    ; dx/dy as signed bytes (clamped)
+    call EnemyDelta                ; b = dx, c = dy
     ; despawn if |dx| or |dy| > 120 (they were clamped at 127: check raw-ish)
     ld a, b
     call AbsA
@@ -662,7 +660,6 @@ UpdateEnemy:
     cp 4
     jr c, .vx0
     ld a, b
-    and a
     bit 7, a
     jr z, .vxP
     ld a, 20                       ; dx<0: enemy west of ship -> move east
@@ -679,7 +676,6 @@ UpdateEnemy:
     cp 4
     jr c, .vy0
     ld a, c
-    and a
     bit 7, a
     jr z, .vyP
     ld a, 20
@@ -710,7 +706,7 @@ UpdateEnemy:
     ld a, [wEnemyX+1]
     ld h, a
     ld a, [wEvX]
-    call .addSignedHL              ; hl = enemyX + vx
+    call AddSignedHL               ; hl = enemyX + vx
     REPT 7
     srl h
     rr l
@@ -722,7 +718,7 @@ UpdateEnemy:
     ld a, [wEnemyY+1]
     ld h, a
     ld a, [wEvY]
-    call .addSignedHL
+    call AddSignedHL
     REPT 7
     srl h
     rr l
@@ -742,7 +738,7 @@ UpdateEnemy:
     ld a, [wEnemyX+1]
     ld h, a
     ld a, [wEvX]
-    call .addSignedHL
+    call AddSignedHL
     ld a, l
     ld [wEnemyX], a
     ld a, h
@@ -752,7 +748,7 @@ UpdateEnemy:
     ld a, [wEnemyY+1]
     ld h, a
     ld a, [wEvY]
-    call .addSignedHL
+    call AddSignedHL
     ld a, l
     ld [wEnemyY], a
     ld a, h
@@ -793,22 +789,6 @@ UpdateEnemy:
     ld [wFinal], a
     ret
 
-; helper: hl += sign-extend(a). clobbers a, h, l
-.addSignedHL
-    ld e, a
-    ld d, 0
-    bit 7, a
-    jr z, .p
-    dec d
-.p
-    ld a, l
-    add e
-    ld l, a
-    ld a, h
-    adc d
-    ld h, a
-    ret
-
 UpdateBalls:
     ; --- player ball ---
     ld a, [wBallPActive]
@@ -820,7 +800,7 @@ UpdateBalls:
     ld a, [wBallPX+1]
     ld h, a
     ld a, [wBallPVX]
-    call .addS
+    call AddSignedHL
     ld a, l
     ld [wBallPX], a
     ld a, h
@@ -830,7 +810,7 @@ UpdateBalls:
     ld a, [wBallPY+1]
     ld h, a
     ld a, [wBallPVY]
-    call .addS
+    call AddSignedHL
     ld a, l
     ld [wBallPY], a
     ld a, h
@@ -1010,7 +990,7 @@ UpdateBalls:
     ld a, [wBallEX+1]
     ld h, a
     ld a, [wBallEVX]
-    call .addS
+    call AddSignedHL
     ld a, l
     ld [wBallEX], a
     ld a, h
@@ -1020,7 +1000,7 @@ UpdateBalls:
     ld a, [wBallEY+1]
     ld h, a
     ld a, [wBallEVY]
-    call .addS
+    call AddSignedHL
     ld a, l
     ld [wBallEY], a
     ld a, h
@@ -1149,22 +1129,6 @@ UpdateBalls:
     ld [wSplashY+1], a
     ld a, 8
     ld [wSplashT], a
-    ret
-
-; helper: hl += sign-extend(a)
-.addS
-    ld e, a
-    ld d, 0
-    bit 7, a
-    jr z, .p
-    dec d
-.p
-    ld a, l
-    add e
-    ld l, a
-    ld a, h
-    adc d
-    ld h, a
     ret
 
 ; ---------------------------------------------------------------------------
@@ -1357,7 +1321,6 @@ RenderCombat::
     rr l
     ENDR
     ld a, l
-    ld bc, wCamX
     ld hl, wCamX
     sub [hl]
     add 4

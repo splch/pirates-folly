@@ -36,7 +36,7 @@ wNpFound:   db
 ; FindNearestIsle each write them right before their print, and the tavern
 ; prints the port line before the isle line, so one pair serves both.
 
-SECTION "Ports", ROM0
+SECTION "Ports", ROMX, BANK[3]
 
 ; ---------------------------------------------------------------------------
 ; Docking (called from sailing on A press)
@@ -183,13 +183,7 @@ TryDock::
     ld [wPortMenu], a
     ld a, 1
     ld [wPortDirty], a
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
-    ldh [rSCX], a                  ; UI screens are unscrolled
-    ldh [rSCY], a
-    ld a, $E4
-    ldh [rBGP], a
+    call LcdOffHome                ; UI screens are unscrolled
     call ClearOAM
     call RenderPort
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
@@ -253,60 +247,60 @@ HasPortHash::
     ret
 
 ; in: b = dx, c = dy; out: a = 1 iff any land tile in the district
+; Scratch is wBeachX/wBeachY: safe here (TryDock is long done when the
+; tavern runs) and, unlike wNpX/wNpY, not FindNearestPort's loop state.
+; 16-bit bases: dx*4 reaches 316, dy*4 reaches 284 — bytes would wrap.
+PUSHS "DistrictHasLand offsets", ROMX, BANK[3]
+DHL_OFF: db 1, 1, 2, 1, 1, 2, 2, 2, 0
+POPS
+
 DistrictHasLand:
-    ld a, b
-    add a
-    add a                          ; dx*4
-    ld [wNpX], a
-    ld a, c
-    add a
-    add a                          ; dy*4
-    ld [wNpY], a
-    ; sample 4 points: (+1,+1) (+2,+1) (+1,+2) (+2,+2)
-    ld a, [wNpX]
-    inc a
+    ld l, b
+    ld h, 0
+    add hl, hl
+    add hl, hl
+    ld a, l
+    ld [wBeachX], a
+    ld a, h
+    ld [wBeachX+1], a              ; dx*4
+    ld l, c
+    ld h, 0
+    add hl, hl
+    add hl, hl
+    ld a, l
+    ld [wBeachY], a
+    ld a, h
+    ld [wBeachY+1], a              ; dy*4
+    ld hl, DHL_OFF
+.loop
+    ld a, [wBeachX]
     ld c, a
-    ld b, 0
-    ld a, [wNpY]
-    inc a
+    ld a, [wBeachX+1]
+    ld b, a
+    ld a, [hli]
+    add c
+    ld c, a
+    jr nc, .xok
+    inc b
+.xok
+    ld a, [wBeachY]
     ld e, a
-    ld d, 0
+    ld a, [wBeachY+1]
+    ld d, a
+    ld a, [hli]
+    add e
+    ld e, a
+    jr nc, .yok
+    inc d
+.yok
+    push hl
     call WorldTile
+    pop hl
     cp TILE_SAND
     jr nc, .land
-    ld a, [wNpX]
-    add 2
-    ld c, a
-    ld b, 0
-    ld a, [wNpY]
-    inc a
-    ld e, a
-    ld d, 0
-    call WorldTile
-    cp TILE_SAND
-    jr nc, .land
-    ld a, [wNpX]
-    inc a
-    ld c, a
-    ld b, 0
-    ld a, [wNpY]
-    add 2
-    ld e, a
-    ld d, 0
-    call WorldTile
-    cp TILE_SAND
-    jr nc, .land
-    ld a, [wNpX]
-    add 2
-    ld c, a
-    ld b, 0
-    ld a, [wNpY]
-    add 2
-    ld e, a
-    ld d, 0
-    call WorldTile
-    cp TILE_SAND
-    jr nc, .land
+    ld a, [hl]
+    and a
+    jr nz, .loop
     xor a                          ; all four samples water
     ret
 .land
@@ -385,22 +379,28 @@ FindNearestPort:
     call ComputeDirection
     ret
 .nextY
+    ; dy/dx march from -r upward one step at a time, so an equality test
+    ; on r+1 is the exact loop bound. (A magnitude test against r is NOT:
+    ; negative offsets are two's complement bytes like $FF that compare
+    ; unsigned-large, which used to end rings r >= 2 after their first cell.)
     ld a, [wNpY]
     inc a
     ld [wNpY], a
-    ld hl, wNpR
-    cp [hl]
-    jr c, .yLoop                   ; dy < r
-    jr z, .yLoop                   ; dy == r
-    ; dy > r -> next dx
+    ld b, a
+    ld a, [wNpR]
+    inc a                          ; r + 1
+    cp b
+    jr nz, .yLoop                  ; dy <= r: keep scanning this ring
+    ; dy == r+1 -> next dx
     ld a, [wNpX]
     inc a
     ld [wNpX], a
-    ld hl, wNpR
-    cp [hl]
-    jp c, .xLoop
-    jp z, .xLoop
-    ; dx > r -> next radius
+    ld b, a
+    ld a, [wNpR]
+    inc a
+    cp b
+    jp nz, .xLoop
+    ; dx == r+1 -> next radius
     ld a, [wNpR]
     inc a
     ld [wNpR], a
@@ -445,7 +445,7 @@ ComputeDirection:
     ld a, 3
     jr .setDir
 .sw
-    ld a, 4
+    ld a, 5                        ; DIRS: 0=N 1=NE 2=E 3=SE 4=S 5=SW 6=W 7=NW
     jr .setDir
 .diagN
     ; north diagonals: NE=1, NW=7
@@ -589,8 +589,10 @@ EraseCursors:
 ; Trade
 ; ---------------------------------------------------------------------------
 
+PUSHS "Trade tables", ROMX, BANK[3]
 GOOD_NAMES:  dw StrRum, StrSilk, StrSpice, StrCannon
 GOOD_BASE:   db 5, 10, 15, 25
+POPS
 
 ; price of good a (0..3) -> a. Uses port hash drift: base * (6 + h&7) / 10.
 GoodPrice:
@@ -617,24 +619,8 @@ GoodPrice:
     add hl, de
     ld a, [hl]                       ; base
     call Mul8                        ; base * factor
-    call DivHL10
-    ret
-
-; hl /= 10 -> a (hl destroyed)
-DivHL10:
-    ld bc, 0
-.loop
-    ld a, l
-    sub 10
-    ld l, a
-    ld a, h
-    sbc 0
-    ld h, a
-    jr c, .done
-    inc c
-    jr .loop
-.done
-    ld a, c
+    ld b, 10
+    call DivHLb
     ret
 
 RenderTrade:
@@ -944,9 +930,7 @@ UpdatePort::
     jr z, .input
     xor a
     ld [wPortDirty], a
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
+    call LcdOff
     call RenderPort
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
     ldh [rLCDC], a
@@ -1133,7 +1117,7 @@ PrintStr::
     inc de
     jr PrintStr
 
-; a = value -> 2 decimal digits at de (leading zero). clobbers a, b, de
+; a = value -> 2 decimal digits at de (leading zero). clobbers a, b, c, de
 PrintDec2::
     ld b, 10
     call DivA
@@ -1154,16 +1138,8 @@ PrintDec3::
     ld [de], a
     inc de
     ld a, b
-    ld b, 10
-    call DivA
-    add TILE_HEX0
-    ld [de], a
-    inc de
-    ld a, b
-    add TILE_HEX0
-    ld [de], a
-    inc de
-    ret
+    ; fall through to PrintDec2
+
 
 ; hl = value -> 4 decimal digits at de. clobbers a, b, c, de, hl
 ; Values above 9999 are clamped (the field is only 4 tiles wide).
@@ -1245,10 +1221,12 @@ DivHL:
 ; Port name generation
 ; ---------------------------------------------------------------------------
 
+PUSHS "Port name tables", ROMX, BANK[3]
 PORT_PREFIX: dw StrP0, StrP1, StrP2, StrP3, StrP4, StrP5, StrP6, StrP7
              dw StrP8, StrP9, StrP10, StrP11, StrP12, StrP13, StrP14, StrP15
 PORT_SUFFIX: dw StrS0, StrS1, StrS2, StrS3, StrS4, StrS5, StrS6, StrS7
              dw StrS8, StrS9, StrS10, StrS11, StrS12, StrS13, StrS14, StrS15
+POPS
 
 ; Print "PFX SFX" from wPortHash at de. clobbers a, b, c, hl, de
 PrintPortName:
@@ -1281,6 +1259,15 @@ DEF SAVE_MAGIC_0 EQU $53
 DEF SAVE_MAGIC_1 EQU $46
 DEF SAVE_VERSION EQU 3          ; v3: + wPortCells (32 B). v2 saves rejected.
 
+; Copy b bytes from de to hl, advancing both. clobbers a, b, de, hl
+CopyToSRAM:
+    ld a, [de]
+    inc de
+    ld [hli], a
+    dec b
+    jr nz, CopyToSRAM
+    ret
+
 ; Save game state to cart RAM.
 SaveGame::
     ld a, $0A
@@ -1292,73 +1279,34 @@ SaveGame::
     ld [hli], a
     ld a, SAVE_VERSION
     ld [hli], a
-    ld a, 0
+    xor a
     ld [hli], a                    ; checksum placeholder
-    ; data: seed(4) pos(4) gold(2) hull(1) crew(1) cargo(4) explored(32) lastport(2)
-    ld a, [wSeed]
-    ld [hli], a
-    ld a, [wSeed+1]
-    ld [hli], a
-    ld a, [wSeed+2]
-    ld [hli], a
-    ld a, [wSeed+3]
-    ld [hli], a
-    ld a, [wPosX]
-    ld [hli], a
-    ld a, [wPosX+1]
-    ld [hli], a
-    ld a, [wPosY]
-    ld [hli], a
-    ld a, [wPosY+1]
-    ld [hli], a
-    ld a, [wGold]
-    ld [hli], a
-    ld a, [wGold+1]
-    ld [hli], a
-    ld a, [wHull]
-    ld [hli], a
-    ld a, [wCrew]
-    ld [hli], a
-    ld a, [wCargo]
-    ld [hli], a
-    ld a, [wCargo+1]
-    ld [hli], a
-    ld a, [wCargo+2]
-    ld [hli], a
-    ld a, [wCargo+3]
-    ld [hli], a
-    ld bc, wExplored
-    ld d, 32
-.exp
-    ld a, [bc]
-    ld [hli], a
-    inc bc
-    dec d
-    jr nz, .exp
-    ld a, [wLastPortDX]
-    ld [hli], a
-    ld a, [wLastPortDY]
-    ld [hli], a
-    ld a, [wFragMask]
-    ld [hli], a
-    ld a, [wFragMask+1]
-    ld [hli], a
-    ld a, [wGuardMask]
-    ld [hli], a
-    ld a, [wGuardMask+1]
-    ld [hli], a
-    ld a, [wFinal]
-    ld [hli], a
-    ld a, [wWon]
-    ld [hli], a
-    ld bc, wPortCells            ; $A03C..$A05B
-    ld d, 32
-.pc
-    ld a, [bc]
-    ld [hli], a
-    inc bc
-    dec d
-    jr nz, .pc
+    ; data layout ($A004..$A05B): seed(4) pos(4) gold+hull+crew+cargo(8)
+    ; explored(32) lastport(2) fragmask+guardmask(4) final+won(2) portcells(32)
+    ld de, wSeed
+    ld b, 4
+    call CopyToSRAM
+    ld de, wPosX                   ; wPosX/wPosY are contiguous
+    ld b, 4
+    call CopyToSRAM
+    ld de, wGold                   ; wGold/wHull/wCrew/wCargo are contiguous
+    ld b, 8
+    call CopyToSRAM
+    ld de, wExplored
+    ld b, 32
+    call CopyToSRAM
+    ld de, wLastPortDX             ; DX/DY contiguous
+    ld b, 2
+    call CopyToSRAM
+    ld de, wFragMask               ; wFragMask/wGuardMask contiguous
+    ld b, 4
+    call CopyToSRAM
+    ld de, wFinal                  ; wFinal/wWon contiguous
+    ld b, 2
+    call CopyToSRAM
+    ld de, wPortCells              ; $A03C..$A05B
+    ld b, 32
+    call CopyToSRAM
     ; checksum = sum of $A004..$A05B
     ld hl, $A004
     ld c, 88
@@ -1373,6 +1321,15 @@ SaveGame::
     ld [$0000], a                  ; RAM disable
     ld a, 1
     ld [wHasSave], a               ; a save exists now: editor offers LOAD
+    ret
+
+; Copy b bytes from hl to de, advancing both. clobbers a, b, de, hl
+CopyFromSRAM:
+    ld a, [hli]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, CopyFromSRAM
     ret
 
 ; Validate + load save. Sets wHasSave (1 = loaded). Called at boot.
@@ -1401,73 +1358,32 @@ LoadGame::
     ld hl, $A003
     cp [hl]
     jp nz, .fail
-    ; load fields
-    ld a, [$A004]
-    ld [wSeed], a
-    ld a, [$A005]
-    ld [wSeed+1], a
-    ld a, [$A006]
-    ld [wSeed+2], a
-    ld a, [$A007]
-    ld [wSeed+3], a
-    ld a, [$A008]
-    ld [wPosX], a
-    ld a, [$A009]
-    ld [wPosX+1], a
-    ld a, [$A00A]
-    ld [wPosY], a
-    ld a, [$A00B]
-    ld [wPosY+1], a
-    ld a, [$A00C]
-    ld [wGold], a
-    ld a, [$A00D]
-    ld [wGold+1], a
-    ld a, [$A00E]
-    ld [wHull], a
-    ld a, [$A00F]
-    ld [wCrew], a
-    ld a, [$A010]
-    ld [wCargo], a
-    ld a, [$A011]
-    ld [wCargo+1], a
-    ld a, [$A012]
-    ld [wCargo+2], a
-    ld a, [$A013]
-    ld [wCargo+3], a
-    ld bc, $A014
-    ld hl, wExplored
-    ld d, 32
-.exp
-    ld a, [bc]
-    ld [hli], a
-    inc bc
-    dec d
-    jr nz, .exp
-    ld a, [$A034]
-    ld [wLastPortDX], a
-    ld a, [$A035]
-    ld [wLastPortDY], a
-    ld a, [$A036]
-    ld [wFragMask], a
-    ld a, [$A037]
-    ld [wFragMask+1], a
-    ld a, [$A038]
-    ld [wGuardMask], a
-    ld a, [$A039]
-    ld [wGuardMask+1], a
-    ld a, [$A03A]
-    ld [wFinal], a
-    ld a, [$A03B]
-    ld [wWon], a
-    ld bc, $A03C
-    ld hl, wPortCells
-    ld d, 32
-.pc
-    ld a, [bc]
-    ld [hli], a
-    inc bc
-    dec d
-    jr nz, .pc
+    ; load fields (hl walks $A004..$A05B; runs mirror SaveGame)
+    ld hl, $A004
+    ld de, wSeed
+    ld b, 4
+    call CopyFromSRAM
+    ld de, wPosX
+    ld b, 4
+    call CopyFromSRAM
+    ld de, wGold
+    ld b, 8
+    call CopyFromSRAM
+    ld de, wExplored
+    ld b, 32
+    call CopyFromSRAM
+    ld de, wLastPortDX
+    ld b, 2
+    call CopyFromSRAM
+    ld de, wFragMask
+    ld b, 4
+    call CopyFromSRAM
+    ld de, wFinal
+    ld b, 2
+    call CopyFromSRAM
+    ld de, wPortCells
+    ld b, 32
+    call CopyFromSRAM
     call FoldSeed16                ; wSeed16 first: ComputeIsles hashes with it
     call ComputeIsles              ; isles are derived, never saved
     xor a
@@ -1486,6 +1402,8 @@ LoadGame::
 ; ---------------------------------------------------------------------------
 ; Strings
 ; ---------------------------------------------------------------------------
+
+SECTION "Port strings", ROMX, BANK[3]
 
 StrGold::   db "GOLD", 0
 StrHull:    db "HULL", 0

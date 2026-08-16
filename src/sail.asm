@@ -36,7 +36,7 @@ wShadowOAM:: ds 160
 SECTION "Sail HRAM", HRAM
 hOamDma::   ds 10
 
-SECTION "OAM DMA routine", ROM0
+SECTION "OAM DMA routine", ROMX, BANK[3]
 ; Copied to HRAM at boot; call hOamDma during VBlank.
 RunDmaROM::
     ld a, HIGH(wShadowOAM)
@@ -48,7 +48,7 @@ RunDmaROM::
     ret
 .end::
 
-SECTION "Sailing", ROM0
+SECTION "Sailing", ROMX, BANK[3]
 
 ; ---------------------------------------------------------------------------
 ; Mode entry/exit
@@ -56,9 +56,7 @@ SECTION "Sailing", ROM0
 
 ; Enters sailing mode from the editor: find a spawn if needed, reset the ship.
 EnterSail::
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
+    call LcdOff
     ld a, [wNeedSpawn]
     and a
     jr z, .noSpawn
@@ -97,9 +95,7 @@ EnterSail::
 
 ; Rebuild the sailing screen (used by chart exit). LCD on.
 SailRedraw::
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
+    call LcdOff
     call SailRedrawBody
     ret
 
@@ -119,13 +115,7 @@ SailRedrawBody:
 
 ; Back to the seed editor.
 LeaveSail:
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
-    ldh [rSCX], a                  ; editor is unscrolled
-    ldh [rSCY], a
-    ld a, $E4                      ; restore palette (storm may have darkened)
-    ldh [rBGP], a
+    call LcdOffHome                ; editor is unscrolled; restore palette
     xor a
     ld [$FE00], a                  ; hide ship sprite (LCD off: OAM free)
     call DrawSeedScreen
@@ -187,13 +177,11 @@ SailFillScreen:
 ; Window map init: clear 2 rows, write static labels, set WX/WY (LCD off).
 SetupHud:
     ld hl, $9C00
-    ld bc, 64
-.clr
+    ld b, 64
     xor a
+.clr
     ld [hli], a
-    dec bc
-    ld a, b
-    or c
+    dec b
     jr nz, .clr
     ld a, TILE_LET_X
     ld [$9C00], a
@@ -734,9 +722,8 @@ Wreck::
     ld [wStormT+1], a              ; else it sweeps the respawn into another
                                    ; wreck, over and over
     ; wreck message
-    call WaitVBlankPoll
+    call LcdOff
     xor a
-    ldh [rLCDC], a
     ldh [rSCX], a
     ldh [rSCY], a
     call DrawSeedScreen
@@ -1075,6 +1062,6 @@ WriteHexPair:
     inc de
     ret
 
-SECTION "Sail strings", ROM0
+SECTION "Sail strings", ROMX, BANK[3]
 StrWreck:   db "SHIPWRECK!", 0
 StrQuitCfm: db "B AGAIN TO QUIT"    ; exactly 15 chars, no terminator

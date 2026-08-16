@@ -49,9 +49,11 @@ wChX::          db
 wChY::          db
 wExplored::     ds 32       ; 16x16-cell fog-of-war bitmap
 wPortCells::    ds 32       ; cells with a docked-at port (chart markers)
+wMarkTX::       dw          ; MarkExplored: ship tile last processed
+wMarkTY::       dw          ; ($FFFF = invalid: after boot/spawn jumps)
                             ; NOTE: must stay right after wExplored (cleared together)
 
-SECTION "World gen", ROM0
+SECTION "World gen", ROMX, BANK[3]
 
 ; ---------------------------------------------------------------------------
 ; Core noise
@@ -649,8 +651,10 @@ MapRowAddr::
     add hl, bc
     ret
 
-; Blit the staged row (wStageRow, cols wTileX..+20) into the BG map.
-BlitRowStage::
+; Copy a staged row from hl into the BG map: row (wStageRow & 31),
+; columns (wTileX & 31)..+20 wrapping within the row. clobbers all.
+BlitRowPass:
+    push hl                      ; src
     ld a, [wStageRow]
     and 31
     call MapRowAddr
@@ -661,19 +665,16 @@ BlitRowStage::
     add hl, bc
     push hl
     pop de                       ; de = dst
-    ld hl, wStageRowTiles
+    pop hl                       ; src
     ; run1 = min(21, 32 - startCol)
-    ld a, [wTileX]
-    and 31
-    ld c, a
     ld a, 32
     sub c
     cp 21
     jr c, .ok
     ld a, 21
 .ok
-    ld [wJCount], a
     ld b, a
+    ld c, a                      ; keep run1 for the wrap calc
 .r1
     ld a, [hli]
     ld [de], a
@@ -681,14 +682,10 @@ BlitRowStage::
     dec b
     jr nz, .r1
     ld a, 21
-    ld b, a
-    ld a, [wJCount]
-    ld c, a
-    ld a, b
     sub c
-    jr z, .attrs
+    ret z                        ; no wrap
     ld b, a
-    ld a, e                        ; wrap to start of tilemap row
+    ld a, e                      ; wrap to start of tilemap row
     sub 32
     ld e, a
     ld a, d
@@ -700,72 +697,33 @@ BlitRowStage::
     inc de
     dec b
     jr nz, .r2
-.attrs                          ; CGB: same pass for palette attrs (bank 1)
+    ret
+
+; Blit the staged row (wStageRow, cols wTileX..+20) into the BG map.
+BlitRowStage::
+    ld hl, wStageRowTiles
+    call BlitRowPass
+    ; CGB: same pass for palette attrs (bank 1)
     ld a, [wIsCGB]
     cp $11                      ; DMG-class HW has one VRAM bank: writing
     ret nz                      ; attrs there would overwrite the tilemap
     ld a, 1
     ldh [rVBK], a
-    ld a, [wStageRow]
-    and 31
-    call MapRowAddr
-    ld a, [wTileX]
-    and 31
-    ld c, a
-    ld b, 0
-    add hl, bc
-    push hl
-    pop de
     ld hl, wStageRowAttrs
-    ld a, [wTileX]
-    and 31
-    ld c, a
-    ld a, 32
-    sub c
-    cp 21
-    jr c, .aok
-    ld a, 21
-.aok
-    ld [wJCount], a
-    ld b, a
-.ar1
-    ld a, [hli]
-    ld [de], a
-    inc de
-    dec b
-    jr nz, .ar1
-    ld a, 21
-    ld b, a
-    ld a, [wJCount]
-    ld c, a
-    ld a, b
-    sub c
-    jr z, .adone
-    ld b, a
-    ld a, e
-    sub 32
-    ld e, a
-    ld a, d
-    sbc 0
-    ld d, a
-.ar2
-    ld a, [hli]
-    ld [de], a
-    inc de
-    dec b
-    jr nz, .ar2
-.adone
+    call BlitRowPass
     xor a
     ldh [rVBK], a
     ret
 
-; Blit the staged column (wStageCol, rows wTileY..+18) into the BG map.
-BlitColStage::
+; Copy a staged column from hl into the BG map: col (wStageCol & 31),
+; rows (wStageColY & 31)..+18 wrapping to the top. clobbers all.
+BlitColPass:
+    push hl                      ; src
     ld a, [wStageCol]
     and 31
     ld c, a
     ld b, 0
-    push bc
+    push bc                      ; start col
     ld a, [wStageColY]
     and 31
     call MapRowAddr
@@ -773,7 +731,7 @@ BlitColStage::
     add hl, bc
     push hl
     pop de                       ; de = dst
-    ld hl, wStageColTiles
+    pop hl                       ; src
     ; run1 = min(19, 32 - startRow)
     ld a, [wStageColY]
     and 31
@@ -784,8 +742,8 @@ BlitColStage::
     jr c, .ok
     ld a, 19
 .ok
-    ld [wJCount], a
     ld b, a
+    ld c, a                      ; keep run1 for the wrap calc
 .c1
     ld a, [hl]
     ld [de], a
@@ -799,14 +757,10 @@ BlitColStage::
     dec b
     jr nz, .c1
     ld a, 19
-    ld b, a
-    ld a, [wJCount]
-    ld c, a
-    ld a, b
     sub c
-    jr z, .attrs
+    ret z                        ; no wrap
     ld b, a
-    ld a, e                        ; wrap to top of tilemap
+    ld a, e                      ; wrap to top of tilemap
     sub LOW(1024)
     ld e, a
     ld a, d
@@ -824,75 +778,20 @@ BlitColStage::
     ld d, a
     dec b
     jr nz, .c2
-.attrs                          ; CGB: attribute pass in bank 1
+    ret
+
+; Blit the staged column (wStageCol, rows wTileY..+18) into the BG map.
+BlitColStage::
+    ld hl, wStageColTiles
+    call BlitColPass
+    ; CGB: attribute pass in bank 1
     ld a, [wIsCGB]
     cp $11
     ret nz
     ld a, 1
     ldh [rVBK], a
-    ld a, [wStageCol]
-    and 31
-    ld c, a
-    ld b, 0
-    push bc
-    ld a, [wStageColY]
-    and 31
-    call MapRowAddr
-    pop bc
-    add hl, bc
-    push hl
-    pop de
     ld hl, wStageColAttrs
-    ld a, [wStageColY]
-    and 31
-    ld c, a
-    ld a, 32
-    sub c
-    cp 19
-    jr c, .aok
-    ld a, 19
-.aok
-    ld [wJCount], a
-    ld b, a
-.ac1
-    ld a, [hl]
-    ld [de], a
-    inc hl
-    ld a, e
-    add 32
-    ld e, a
-    ld a, d
-    adc 0
-    ld d, a
-    dec b
-    jr nz, .ac1
-    ld a, 19
-    ld b, a
-    ld a, [wJCount]
-    ld c, a
-    ld a, b
-    sub c
-    jr z, .adone
-    ld b, a
-    ld a, e
-    sub LOW(1024)
-    ld e, a
-    ld a, d
-    sbc HIGH(1024)
-    ld d, a
-.ac2
-    ld a, [hl]
-    ld [de], a
-    inc hl
-    ld a, e
-    add 32
-    ld e, a
-    ld a, d
-    adc 0
-    ld d, a
-    dec b
-    jr nz, .ac2
-.adone
+    call BlitColPass
     xor a
     ldh [rVBK], a
     ret
@@ -906,7 +805,9 @@ BlitColStage::
 ; 24-tile eastward water run, and a 12-tile vertical water run. The plain
 ; "first deep tile on row 144" scan could pick a tiny enclosed lake (seed
 ; FFFFFFFF spawned in a 218-tile puddle with no path to the ocean).
+PUSHS "Spawn row table", ROMX, BANK[3]
 SPAWN_ROWS: db 144, 160, 128, 176, 112, 192, 96, 208, 80, 224, 0
+POPS
 
 FindSpawn::
     ld a, LOW(SPAWN_ROWS)
@@ -1055,6 +956,13 @@ FindSpawn::
     ld [wPosY], a
     ld a, h
     ld [wPosY+1], a
+    ; the position jumped discontinuously: force the next MarkExplored
+    ; to re-derive the cell even if this tile matches the old one
+    ld a, $FF
+    ld [wMarkTX], a
+    ld [wMarkTX+1], a
+    ld [wMarkTY], a
+    ld [wMarkTY+1], a
     ret
 
 ; bc = wSpX (WorldTile clobbers bc). clobbers a, b, c
@@ -1083,12 +991,12 @@ FindSpawn::
 ; Fog of war + chart
 ; ---------------------------------------------------------------------------
 
-; hl /= 20 -> a (hl destroyed)
-DivHL20:
-    ld bc, 0
+; hl /= b -> a (hl destroyed). clobbers a, b, c, hl
+DivHLb::
+    ld c, 0
 .loop
     ld a, l
-    sub 20
+    sub b
     ld l, a
     ld a, h
     sbc 0
@@ -1100,24 +1008,36 @@ DivHL20:
     ld a, c
     ret
 
-; hl /= 18 -> a (hl destroyed)
-DivHL18:
-    ld bc, 0
-.loop
-    ld a, l
-    sub 18
-    ld l, a
-    ld a, h
-    sbc 0
-    ld h, a
-    jr c, .done
-    inc c
-    jr .loop
-.done
+PUSHS "Bitmask table", ROMX, BANK[3]
+BITMASKS: db 1, 2, 4, 8, 16, 32, 64, 128
+POPS
+
+; in: a = cell index (cy*16+cx), hl = bitmap base
+; out: hl = &byte, a = bit mask. clobbers b, c, d, e
+CellBitPtr:
+    ld c, a
+    and 7
+    ld e, a
+    ld d, 0
+    push hl
+    ld hl, BITMASKS
+    add hl, de
+    ld a, [hl]
+    ld b, a
     ld a, c
+    srl a
+    srl a
+    srl a
+    ld e, a
+    pop hl
+    add hl, de
+    ld a, b
     ret
 
 ; Mark the ship's current cell explored. Called once per frame.
+; Early-out while the ship stays on its tile: the cell bit was set when
+; the tile was entered, so only recompute on a tile crossing (the two
+; divisions below are the expensive part).
 MarkExplored::
     ld a, [wShipX]
     ld l, a
@@ -1126,42 +1046,52 @@ MarkExplored::
     REPT 3
     srl h
     rr l
-    ENDR
-    call DivHL20
-    ld [wShipCX], a
+    ENDR                           ; hl = tx
     ld a, [wShipY]
-    ld l, a
+    ld e, a
     ld a, [wShipY+1]
-    ld h, a
+    ld d, a
     REPT 3
-    srl h
-    rr l
-    ENDR
-    call DivHL18
+    srl d
+    rr e
+    ENDR                           ; de = ty
+    ld a, [wMarkTX]
+    cp l
+    jr nz, .moved
+    ld a, [wMarkTX+1]
+    cp h
+    jr nz, .moved
+    ld a, [wMarkTY]
+    cp e
+    jr nz, .moved
+    ld a, [wMarkTY+1]
+    cp d
+    jr nz, .moved
+    xor a                          ; same tile: not newly explored
+    ret
+.moved
+    ld a, l
+    ld [wMarkTX], a
+    ld a, h
+    ld [wMarkTX+1], a
+    ld a, e
+    ld [wMarkTY], a
+    ld a, d
+    ld [wMarkTY+1], a
+    push de                        ; ty
+    ld b, 20
+    call DivHLb                    ; a = cell x (clobbers bc, hl; keeps de)
+    ld [wShipCX], a
+    pop hl                         ; hl = ty
+    ld b, 18
+    call DivHLb                    ; a = cell y
     ld [wShipCY], a
     ; set bit (cy*16+cx) in wExplored
     swap a                         ; cy*16 (cy <= 15)
     ld hl, wShipCX
     add a, [hl]
-    ld c, a
-    and 7
-    ld b, a
-    ld a, c
-    srl a
-    srl a
-    srl a
-    ld e, a
-    ld d, 0
     ld hl, wExplored
-    add hl, de
-    ld a, 1
-    inc b
-    jr .start
-.mk
-    add a, a
-.start
-    dec b
-    jr nz, .mk
+    call CellBitPtr
     ; a = mask, hl = byte ptr; return a=1 iff newly explored
     ld b, a
     ld a, [hl]
@@ -1182,35 +1112,20 @@ MarkPortCell::
     ld l, a
     ld a, [wBeachX+1]
     ld h, a
-    call DivHL20
+    ld b, 20
+    call DivHLb
     ld [wChX], a                   ; beach cell X
     ld a, [wBeachY]
     ld l, a
     ld a, [wBeachY+1]
     ld h, a
-    call DivHL18                   ; a = beach cell Y
+    ld b, 18
+    call DivHLb                    ; a = beach cell Y
     swap a                         ; cy*16 (cy <= 15)
     ld hl, wChX
     add a, [hl]
-    ld c, a
-    and 7
-    ld b, a
-    ld a, c
-    srl a
-    srl a
-    srl a
-    ld e, a
-    ld d, 0
     ld hl, wPortCells
-    add hl, de
-    ld a, 1
-    inc b
-    jr .s
-.mk
-    add a, a
-.s
-    dec b
-    jr nz, .mk
+    call CellBitPtr
     or [hl]
     ld [hl], a
     ret
@@ -1221,25 +1136,8 @@ TestPortCell:
     swap a                         ; *16
     ld hl, wChX
     add a, [hl]
-    ld c, a
-    and 7
-    ld b, a
-    ld a, c
-    srl a
-    srl a
-    srl a
-    ld e, a
-    ld d, 0
     ld hl, wPortCells
-    add hl, de
-    ld a, 1
-    inc b
-    jr .start
-.mk
-    add a, a
-.start
-    dec b
-    jr nz, .mk
+    call CellBitPtr
     and [hl]
     ret
 
@@ -1249,25 +1147,8 @@ TestExplored:
     swap a                         ; *16
     ld hl, wChX
     add a, [hl]
-    ld c, a
-    and 7
-    ld b, a
-    ld a, c
-    srl a
-    srl a
-    srl a
-    ld e, a
-    ld d, 0
     ld hl, wExplored
-    add hl, de
-    ld a, 1
-    inc b
-    jr .start
-.mk
-    add a, a
-.start
-    dec b
-    jr nz, .mk
+    call CellBitPtr
     and [hl]
     ret
 
@@ -1391,13 +1272,7 @@ ClearOAM::
 
 ; Open the chart (from sailing).
 EnterChart::
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
-    ldh [rSCX], a                  ; chart is unscrolled
-    ldh [rSCY], a
-    ld a, $E4
-    ldh [rBGP], a
+    call LcdOffHome                ; chart is unscrolled
     call ClearOAM                  ; hide everything (incl. sea sprite)
     call DrawSeedScreen
     call RenderChart

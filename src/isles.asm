@@ -21,18 +21,20 @@ wNpDays::    db
 wBestK:      db
 wBestIsle::  db           ; isle index of nearest unclaimed (tavern rumor)
 
-SECTION "Isles", ROM0
+SECTION "Isles", ROMX, BANK[3]
 
 ; ---------------------------------------------------------------------------
 ; Placement: 9 isles at 40-degree intervals around center (8,8), jittered,
 ; validated to contain land. Deterministic from the seed.
 ; ---------------------------------------------------------------------------
 
+PUSHS "Isle placement tables", ROMX, BANK[3]
 ISLE_DX: db  6,  5,  1, -3, -6, -6, -3,  1,  5
 ISLE_DY: db  0,  4,  6,  5,  2, -2, -5, -6, -4
 ; attempt offsets for the land scan
 ISLE_TRY_DX: db 0, 1, -1, 0, 0, 1
 ISLE_TRY_DY: db 0, 0, 0, 1, -1, 1
+POPS
 
 ComputeIsles::
     xor a
@@ -143,7 +145,9 @@ ComputeIsles::
     jp nz, .kLoop
     ret
 
+PUSHS "Isle land-sample offsets", ROMX, BANK[3]
 CHL_OFFSETS: db 10, 9, 5, 5, 15, 13
+POPS
 
 ; in: wCandX, wCandY (cell coords); out: a = 1 iff any sampled land tile
 CellHasLand:
@@ -371,9 +375,7 @@ DigScene::
     jr z, .final
     ; render: "YOU FOUND A CHART FRAGMENT!" + "k OF 9"
     push af
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
+    call LcdOff
     call DrawSeedScreen
     ld hl, StrFound1
     ld de, $9800 + 4 * 32 + 5
@@ -392,9 +394,7 @@ DigScene::
     ; 9th fragment: begin the final battle
     ld a, 1
     ld [wFinal], a
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
+    call LcdOff
     call DrawSeedScreen
     ld hl, StrFinal1
     ld de, $9800 + 4 * 32 + 2
@@ -448,9 +448,8 @@ Victory::
     ld a, JINGLE_WIN
     call SetSong
     call SaveGame
-    call WaitVBlankPoll
+    call LcdOff
     xor a
-    ldh [rLCDC], a
     ldh [rSCX], a
     ldh [rSCY], a
     call DrawSeedScreen
@@ -548,6 +547,7 @@ FindNearestIsle::
 ; ---------------------------------------------------------------------------
 ; Strings
 ; ---------------------------------------------------------------------------
+SECTION "Isle strings", ROMX, BANK[3]
 StrFound1: db "YOU FOUND A", 0
 StrFound2: db "CHART FRAGMENT!", 0
 StrOf9:    db "OF 9", 0

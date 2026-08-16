@@ -54,6 +54,7 @@ pb.set_emulation_speed(0)
 syms = load_symbols()
 mem = pb.memory
 new_game(pb)
+isles1 = bytes(mem[syms["wIsles"] + i] for i in range(18))
 dock(pb, syms)
 
 name = [t for t in (mem[0x9800 + 32 + 3 + i] for i in range(12)) if t]
@@ -119,6 +120,10 @@ rum2 = mem2[syms["wCargo"]]
 print("loaded: gold", gold2, "rum", rum2)
 assert has_save == 1, "no save detected after reboot"
 assert gold2 == 44 and rum2 == 1, f"loaded state wrong: gold {gold2} rum {rum2}"
+# isles recomputed from the seed at boot must match a fresh game's (the
+# boot-time ComputeIsles reads the data bank: it must be mapped already)
+isles2 = bytes(mem2[syms["wIsles"] + i] for i in range(18))
+assert isles2 == isles1, f"boot-time isles wrong: {isles2.hex()} != {isles1.hex()}"
 # editor should show hint text (nonzero tiles on rows 5-6)
 hint = [t for t in (mem2[0x9800 + 5 * 32 + 5 + i] for i in range(12)) if t]
 assert hint, "no continue hint"

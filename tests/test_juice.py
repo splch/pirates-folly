@@ -76,10 +76,9 @@ def j2_smoke_and_splash():
     pb = boot()
     mem = pb.memory
     new_game(pb)
-    pb.button_press("a")             # fire ahead (open ocean: no dock)
-    pb.tick()
-    pb.button_release("a")
-    pb.tick()
+    press3(pb, "a")                 # fire ahead (open ocean: no dock)
+    for _ in range(2):
+        pb.tick()
     assert mem[syms["wBallPActive"]] == 1, "cannon didn't fire"
     assert mem[syms["wSmokeT"]] > 0, "no muzzle smoke on firing"
     # let the ball die in place two frames from now

@@ -40,6 +40,14 @@ wIsSGB::       db             ; $14 = SGB/SGB2 (boot ROM leaves it in c)
 SECTION "Main", ROM0[$0150]
 EntryPoint:
     di
+    ld b, a                      ; stash boot ROM's hardware id
+    ld a, 3
+    ld [$2000], a                ; data bank (tiles/sound/text) at $4000 —
+                                 ; ComputeIsles below already reads it.
+                                 ; Invariant: bank 3 stays mapped except
+                                 ; inside SGBTransferBorder, which ends in
+                                 ; LoadTiles and thereby restores it.
+    ld a, b
     ld [wIsCGB], a               ; boot ROM: $11 on CGB/AGB, $01 on DMG
     ld a, c
     ld [wIsSGB], a               ; boot ROM: $14 on SGB/SGB2, $13 on DMG/MGB
@@ -80,6 +88,11 @@ EntryPoint:
     ld [wSplashT], a
     ld [wSmokeT], a
     ld [wCursor], a
+    ld a, $FF                    ; MarkExplored tile cache: invalid
+    ld [wMarkTX], a
+    ld [wMarkTX+1], a
+    ld [wMarkTY], a
+    ld [wMarkTY+1], a
 
     call SoundInit
     call LoadTiles
@@ -230,9 +243,11 @@ VBlankHandler:
 ; ---------------------------------------------------------------------------
 ; Seed editor state
 ; ---------------------------------------------------------------------------
+SECTION "Main UI", ROMX, BANK[3]
 UpdateEdit:
     ; LEFT/RIGHT move the digit cursor
     ld a, [wRepEff]
+    ld c, a                      ; repeated-direction bits for all four tests
     and PADF_RIGHT
     jr z, .notRight
     ld a, [wCursor]
@@ -240,7 +255,7 @@ UpdateEdit:
     and 7
     ld [wCursor], a
 .notRight
-    ld a, [wRepEff]
+    ld a, c
     and PADF_LEFT
     jr z, .notLeft
     ld a, [wCursor]
@@ -249,7 +264,7 @@ UpdateEdit:
     ld [wCursor], a
 .notLeft
     ; UP/DOWN change the selected nibble
-    ld a, [wRepEff]
+    ld a, c
     and PADF_UP
     jr z, .notUp
     call GetNibblePtr
@@ -258,7 +273,7 @@ UpdateEdit:
     and $0F
     ld [hl], a
 .notUp
-    ld a, [wRepEff]
+    ld a, c
     and PADF_DOWN
     jr z, .notDown
     call GetNibblePtr
@@ -381,7 +396,9 @@ RenderSeedRow::
 ; Screen helpers
 ; ---------------------------------------------------------------------------
 
-; Poll for the START of VBlank. LCD must be on.
+; Poll for the START of VBlank. LCD must be on. ROM0: SGBTransferBorder
+; calls this while banks 1/2 (border art) are mapped.
+PUSHS "Main low", ROM0
 WaitVBlankPoll::
 .waitOut
     ldh a, [rLY]
@@ -392,32 +409,50 @@ WaitVBlankPoll::
     cp 144
     jr c, .waitIn
     ret
+POPS
+
+; Wait for VBlank, then LCD off. clobbers a
+LcdOff::
+    call WaitVBlankPoll
+    xor a
+    ldh [rLCDC], a
+    ret
+
+; LcdOff + scroll home + canonical BGP (UI screens are unscrolled)
+LcdOffHome::
+    call LcdOff
+    xor a
+    ldh [rSCX], a
+    ldh [rSCY], a
+    ld a, $E4
+    ldh [rBGP], a
+    ret
 
 ; Fill the whole BG map with TILE_BLANK. LCD must be off.
 ; On CGB also clears the attribute bank (text screens use palette 0).
 DrawSeedScreen::
-    ld hl, $9800
-    ld bc, 1024
-.loop
     xor a
+    ld hl, $9800
+    ld bc, 1024                  ; b = 4 pages, c wraps 256..1
+.loop
     ld [hli], a
-    dec bc
-    ld a, b
-    or c
+    dec c
+    jr nz, .loop
+    dec b
     jr nz, .loop
     ld a, [wIsCGB]
     cp $11                      ; not CGB: single VRAM bank, no attrs
     ret nz
     ld a, 1
     ldh [rVBK], a
+    xor a
     ld hl, $9800
     ld bc, 1024
 .aloop
-    xor a
     ld [hli], a
-    dec bc
-    ld a, b
-    or c
+    dec c
+    jr nz, .aloop
+    dec b
     jr nz, .aloop
     xor a
     ldh [rVBK], a
@@ -438,11 +473,7 @@ DrawSeedHints::
 
 ; LCD-off redraw of the editor screen, LCD back on.
 ShowSeedScreen::
-    call WaitVBlankPoll
-    xor a
-    ldh [rLCDC], a
-    ldh [rSCX], a
-    ldh [rSCY], a
+    call LcdOffHome
     call DrawSeedScreen
     call DrawSeedHints
     call RenderSeedRow
@@ -504,22 +535,6 @@ InitNewGame:
     call ComputeIsles
     ret
 
-; New random seed into wSeed + wSeedNib + wSeed16.
-RandomizeSeed:
-    call Rand16
-    ld a, h
-    ld [wSeed], a
-    ld a, l
-    ld [wSeed+1], a
-    call Rand16
-    ld a, h
-    ld [wSeed+2], a
-    ld a, l
-    ld [wSeed+3], a
-    call SplitSeedNibbles
-    call FoldSeed16
-    ret
-
 ; ---------------------------------------------------------------------------
 ; Title screen (M6)
 ; ---------------------------------------------------------------------------
@@ -565,7 +580,7 @@ UpdateTitle::
     ld [wState], a                 ; STATE_EDIT
     ret
 
-SECTION "Default data", ROM0
+SECTION "Default data", ROMX, BANK[3]
 DefaultSeedNibs:
     db $D, $E, $A, $D, $B, $E, $E, $F
 StrNewGame:  db "A  NEW GAME", 0

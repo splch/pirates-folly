@@ -68,7 +68,7 @@ wSongID::    db
 wSfx1T:      db           ; ch1 SFX frames remaining (steals melody)
 wSfx4T:      db           ; ch4 SFX frames remaining (steals percussion)
 
-SECTION "Sound", ROM0
+SECTION "Sound", ROMX, BANK[3]
 
 SoundInit::
     ld a, $80
@@ -328,6 +328,8 @@ PlaySfx::
 ; ---------------------------------------------------------------------------
 ; Data
 ; ---------------------------------------------------------------------------
+
+SECTION "Sound data", ROMX, BANK[3]
 
 ; GB pulse period = 2048 - 131072/f. 48 entries: C2..B5.
 NOTE_PERIODS:

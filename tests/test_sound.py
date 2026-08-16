@@ -14,7 +14,12 @@ for line in open(SYM):
         syms[p[1]] = int(p[0].split(":")[1], 16)
 mem = pb.memory
 def press(btn, wait=30):
-    pb.button_press(btn); pb.tick(); pb.button_release(btn)
+    # hold for 3 ticks: a 1-tick press can land between the game's joypad
+    # reads (PyBoy writes hit mid-frame) and vanish
+    pb.button_press(btn)
+    for _ in range(3):
+        pb.tick()
+    pb.button_release(btn)
     for _ in range(wait): pb.tick()
 
 for _ in range(150): pb.tick()
@@ -50,7 +55,7 @@ assert mem[syms["wSongID"]] == 2, f"back to sail {mem[syms['wSongID']]}"
 print("battle/calm switching OK")
 
 # cannon SFX: fire (A) -> ch4 sfx timer set + NR42 cannon env
-pb.button_press("a"); pb.tick(); pb.button_release("a"); pb.tick()
+press("a", 2)
 assert mem[syms["wSfx4T"]] > 0, "no sfx timer"
 assert mem[0xFF21] == 0xF6, f"cannon env {mem[0xFF21]:#x}"
 print("cannon SFX OK")

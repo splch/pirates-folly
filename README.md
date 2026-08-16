@@ -145,6 +145,15 @@ MANUAL.md       the player's manual
   districts), port names (16×16 prefix/suffix), market price drift, tavern
   rumors, encounter rolls, and the Nine Isles' positions are all pure hash
   functions of coordinates + seed — deterministic and storage-free.
+- **Bank 3 holds almost everything.** Game code (worldgen, sailing,
+  combat, ports, isles, sound driver) and all data (tiles, font, songs,
+  strings, tables) live in ROMX bank 3, kept mapped at `$4000` at all
+  times except inside the SGB border transfer — which always ends in
+  `LoadTiles`, restoring bank 3 before any banked return address is
+  popped. ROM0 keeps only what must run regardless of the mapped bank:
+  boot, main loop, the VBlank handler, joypad/RNG, the tile loader, and
+  the SGB transfer machinery itself (plus the SGB packets, which are read
+  mid-transfer while border banks 1/2 are mapped).
 - **SGB borders.** On SGB/SGB2 (detected via the boot ROM's C register),
   the border is beamed over with CHR_TRN/PCT_TRN VRAM transfers while the
   screen is frozen with MASK_EN: 256 SNES 4bpp tiles, a 32x28+1 map, and

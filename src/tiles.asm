@@ -7,6 +7,10 @@ INCLUDE "defs.inc"
 SECTION "Tile loader", ROM0
 
 LoadTiles::
+    ld a, 3
+    ld [$2000], a              ; map the data bank (tiles/sound/text live
+                               ; in ROMX bank 3; it stays mapped except
+                               ; during SGB border transfers)
     ld hl, TerrainTiles
     ld de, $8000
     ld bc, 8 * 16
@@ -56,14 +60,14 @@ CGBInit::
     ; clear attribute banks of both BG maps ($9800/$9C00)
     ld a, 1
     ldh [rVBK], a
-    ld hl, $9800
-    ld bc, 2048
-.clr
     xor a
+    ld hl, $9800
+    ld bc, 2048                  ; b = 8 pages, c wraps 256..1
+.clr
     ld [hli], a
-    dec bc
-    ld a, b
-    or c
+    dec c
+    jr nz, .clr
+    dec b
     jr nz, .clr
     xor a
     ldh [rVBK], a
@@ -88,6 +92,7 @@ CGBInit::
     jr nz, .obl
     ret
 
+PUSHS "CGB palette data", ROMX, BANK[3]
 CGB_BGP:
     dw $7FFF, $5294, $2108, $0000  ; 0 UI: white/lt gray/dk gray/black
     dw $7F94, $7A8A, $5964, $34A1  ; 1 sea: foam -> deep navy
@@ -96,9 +101,11 @@ CGB_BGP:
 CGB_OBP:
     dw $7FFF, $2A5F, $1150, $0000  ; obj0 player: white/tan/brown/black
     dw $7FFF, $5294, $0850, $0000  ; obj1 pirate: white/gray/dark red/black
+POPS
 
 ; 2-frame water animation: [deepA][shallowA][deepB][shallowB], 16 bytes each.
 ; SailVBlank copies one 32-byte pair over tiles 1-2 every 16 frames.
+PUSHS "Water anim data", ROMX, BANK[3]
 WaterFrames::
     dw `00000000
     dw `00000000
@@ -133,6 +140,7 @@ WaterFrames::
     dw `00010010
     dw `00000000
     dw `01001000
+POPS
 
 ; tiles 13-14: port marker (chart) + dock planks (in-world)
 PortTiles:
@@ -518,7 +526,7 @@ LetterTiles:
     dw `03000000
     dw `00000000
 
-SECTION "Tile data", ROM0
+SECTION "Tile data", ROMX, BANK[3]
 
 TerrainTiles:
 ; 0 TILE_BLANK
@@ -741,7 +749,7 @@ HexFont:
     dw `00000000
     dw `00000000
 
-SECTION "Ball tile", ROM0
+SECTION "Ball tile", ROMX, BANK[3]
 BallTile:
     dw `00000000
     dw `00033000
@@ -752,7 +760,7 @@ BallTile:
     dw `00033000
     dw `00000000
 
-SECTION "Splash tile", ROM0
+SECTION "Splash tile", ROMX, BANK[3]
 SplashTile:
     dw `00000000
     dw `03000030

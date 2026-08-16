@@ -18,6 +18,8 @@ Covered fixes:
   R14 digging up a fragment does not fire the cannons
   R15 SaveGame sets wHasSave (editor offers LOAD without a console reset)
   R16 boot clears fire cooldowns (R13 follow-through)
+  R17 tavern nearest-port scan covers whole rings (signed loop bound made
+      rings r>=2 test only their NW corner) and SW bears as SW, not S
 
 Freebies:
   F1  B-at-sea quit requires a confirming second press
@@ -190,6 +192,14 @@ def teleport(pb, tx, ty, tries=8):
         set16(mem, "wPosY", (ty * 8) << 4)
         pb.tick()
         if (w16(mem, "wShipX") >> 3, w16(mem, "wShipY") >> 3) == (tx, ty):
+            return True
+    return False
+
+
+def district_has_land(dx, dy, s16):
+    """Mirror of port.asm DistrictHasLand: 4 sampled tiles per district."""
+    for ox, oy in ((1, 1), (2, 1), (1, 2), (2, 2)):
+        if tile(dx * 4 + ox, dy * 4 + oy, s16) >= 3:
             return True
     return False
 
@@ -723,13 +733,23 @@ def f2_storm_drift_range():
             wx, wy = cx * 20 + 10, cy * 18 + 9
             if tile(wx, wy, s16) >= 3:
                 continue                  # ship must stay in water
+            if not teleport(pb, wx, wy):
+                continue
+            # The teleport's own ticks may roll an encounter at a torn
+            # intermediate position, so re-roll cleanly at the settled
+            # target: clear explored/storm/enemy, invalidate the
+            # MarkExplored tile cache, and wait for the cell to re-mark
+            # (writes can land after a frame's logic: tick until it takes).
             for i in range(32):
                 mem[syms["wExplored"] + i] = 0
             set16(mem, "wStormT", 0)
-            set16(mem, "wPosX", (wx * 8) << 4)
-            set16(mem, "wPosY", (wy * 8) << 4)
+            mem[syms["wEnemyActive"]] = 0
+            set16(mem, "wMarkTX", 0xFFFF)
+            bit = (cy * 16 + cx) % 8
             for _ in range(4):
                 pb.tick()
+                if mem[syms["wExplored"] + (cy * 16 + cx) // 8] >> bit & 1:
+                    break
             if w16(mem, "wStormT") > 0:
                 dx = mem[syms["wStormDX"]]
                 dy = mem[syms["wStormDY"]]
@@ -741,6 +761,55 @@ def f2_storm_drift_range():
         f"storm drift never exceeded 16 over {len(samples)} storms (old range)"
     pb.stop()
     print(f"F2 storm drift range: OK ({len(samples)} storms, max {biggest})")
+
+# -------------------- R17: tavern nearest-port scan covers whole rings
+
+def r17_tavern_port_scan():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    ports = [(dx, dy) for dy in range(72) for dx in range(80)
+             if has_port(dx, dy, s16) and district_has_land(dx, dy, s16)]
+    pset = set(ports)
+    # scenario: a port whose nearest fellow port is 2+ rings out and alone
+    # on its ring (prefer a SW bearing: DIRS[5] was mislabeled S)
+    cands = []
+    for p in ports:
+        for r in range(1, 13):
+            ring = [(p[0] + dx, p[1] + dy)
+                    for dx in range(-r, r + 1) for dy in range(-r, r + 1)
+                    if max(abs(dx), abs(dy)) == r
+                    and (p[0] + dx, p[1] + dy) in pset]
+            if ring:
+                if r >= 2 and len(ring) == 1:
+                    d = snap_dir(ring[0][0] - p[0], ring[0][1] - p[1])
+                    cands.append((d != 5, p, r, DIRS[d]))
+                break
+    cands.sort()
+    sailed = False
+    for _, (dx, dy), r, dname in cands:
+        try:
+            dock_at_district(pb, s16, dx, dy)
+        except AssertionError:
+            continue
+        if mem[syms["wPortDX"]] == dx and mem[syms["wPortDY"]] == dy:
+            sailed = True
+            break
+        press(pb, "b", 30)               # wrong district: set sail, try next
+    if not sailed:
+        pb.stop()
+        print("R17 skipped (no ring>=2 port scenario in this sea)")
+        return
+    press(pb, "down", 2)
+    press(pb, "down", 2)
+    press(pb, "a", 30)                       # TAVERN
+    days = read_text(mem, 0x9800 + 9 * 32 + 1, 2)
+    bearing = read_text(mem, 0x9800 + 9 * 32 + 9, 2).strip()
+    pb.stop()
+    assert days == f"{r:02d}" and bearing == dname, \
+        f"tavern says '{days} {bearing}', want '{r:02d} {dname}'"
+    print(f"R17 tavern port scan ({days} DAYS {bearing}): OK")
 
 # --------------------------------- F3: HUD stats line at sea
 
@@ -764,7 +833,8 @@ if __name__ == "__main__":
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
                r8_final_wave_returned, r9_r10_tavern, r11_r12_menu_and_gold,
                r13_boot_clears_state, r14_dig_no_cannon, r15_save_sets_has_save,
-               r16_boot_clears_fire_cooldowns, f1_quit_confirm,
+               r16_boot_clears_fire_cooldowns, r17_tavern_port_scan,
+               f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
     print("ALL REGRESSION CHECKS PASSED")
