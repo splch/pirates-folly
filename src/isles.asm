@@ -10,7 +10,7 @@ wFragMask::  dw           ; fragment collected per isle
 wGuardMask:: dw           ; guardian defeated per isle
 wCurIsle::   db
 wIsGuardian:: db
-wFinal::     db           ; 0=none, 1-2=wave to spawn, 3=all spawned, 4=done
+wFinal::     db           ; 0=none, 1-4=wave to spawn, 5=all spawned, 6=done
 wWon::       db
 wLastCellX:  db
 wLastCellY:  db
@@ -300,10 +300,28 @@ SpawnGuardian:
     ld a, [wEnemyActive]
     and a
     ret z                          ; spawn aborted (land)
+    ld a, [wFinal]
+    and a
+    jr nz, .finalWave
     ld a, GUARD_HP
     ld [wEnemyHP], a
     ld a, GUARD_FIRECOOL
     ld [wEnemyFireCool], a
+    jr .mark
+.finalWave
+    ; the final fleet escalates per wave k (= wFinal): HP 5+k, cooldown 50-8k
+    ld b, a
+    add GUARD_HP
+    ld [wEnemyHP], a
+    ld a, b
+    REPT 3
+    add a
+    ENDR                           ; 8k
+    ld b, a
+    ld a, GUARD_FIRECOOL
+    sub b
+    ld [wEnemyFireCool], a
+.mark
     ld a, 1
     ld [wIsGuardian], a
     ret
@@ -313,7 +331,7 @@ CellWatch::
     ld a, [wFinal]
     and a
     jr z, .notFinal
-    cp 3
+    cp 5
     ret nc                         ; all waves spawned (or done)
     ld a, [wEnemyActive]
     and a
@@ -441,7 +459,7 @@ CountFrags::
 ; Victory
 ; ---------------------------------------------------------------------------
 Victory::
-    ld a, 4
+    ld a, 6
     ld [wFinal], a
     ld a, 1
     ld [wWon], a

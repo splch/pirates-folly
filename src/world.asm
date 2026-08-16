@@ -1277,6 +1277,31 @@ ChartMarker:
     ld [$FE07], a
     ret
 
+; Print the voyage seed on the chart's free bottom row ("SEED xxxxxxxx").
+; Share a seed, share a world — it should be readable without quitting.
+; LCD off. clobbers a, b, d, e, h, l
+ChartSeed:
+    ld hl, $9800 + 17 * 32 + 4
+    ld a, TILE_A + 18              ; 'S'
+    ld [hli], a
+    ld a, TILE_A + 4               ; 'E'
+    ld [hli], a
+    ld [hli], a                    ; second 'E'
+    ld a, TILE_A + 3               ; 'D'
+    ld [hli], a
+    ld a, TILE_SPACE
+    ld [hli], a
+    ld de, wSeedNib
+    ld b, 8
+.dig
+    ld a, [de]
+    inc de
+    add TILE_HEX0
+    ld [hli], a
+    dec b
+    jr nz, .dig
+    ret
+
 ; Clear all 40 OAM entries. LCD must be off.
 ClearOAM::
     ld hl, $FE00
@@ -1295,6 +1320,7 @@ EnterChart::
     call DrawSeedScreen
     call RenderChart
     call ChartMarker
+    call ChartSeed
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01 | LCDC_OBJ_ON
     ldh [rLCDC], a
     ld a, STATE_CHART

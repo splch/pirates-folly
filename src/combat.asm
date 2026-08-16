@@ -496,7 +496,11 @@ FireCannon::
     ld a, [wBallPActive]
     and a
     ret nz
+    ld a, [wCrew]
+    srl a                        ; more hands aboard, faster reload
+    ld b, a
     ld a, 30
+    sub b
     ld [wFireCool], a
     ld a, [wEnemyActive]
     and a
@@ -783,7 +787,7 @@ UpdateEnemy:
     ld a, [wFinal]
     and a
     ret z
-    cp 4
+    cp 6
     ret z
     dec a
     ld [wFinal], a
@@ -968,7 +972,7 @@ UpdateBalls:
     ld a, [wFinal]
     and a
     jr z, .normalSink
-    cp 3
+    cp 5
     jp z, .victorySink
     jp .enemyBall                  ; mid-final-battle: next wave via CellWatch
 .normalSink

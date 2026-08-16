@@ -469,6 +469,12 @@ DrawSeedHints::
     ld hl, StrLoadGame
     ld de, $9800 + 6 * 32 + 5
     call PrintStr
+    ld a, [wWon]
+    and a
+    ret z
+    ld hl, StrWonTag
+    ld de, $9800 + 7 * 32 + 5
+    call PrintStr
     ret
 
 ; LCD-off redraw of the editor screen, LCD back on.
@@ -585,6 +591,7 @@ DefaultSeedNibs:
     db $D, $E, $A, $D, $B, $E, $E, $F
 StrNewGame:  db "A  NEW GAME", 0
 StrLoadGame: db "START LOAD", 0
+StrWonTag:   db "TREASURE WON!", 0
 StrTitle:    db "PIRATES FOLLY", 0
 StrTitleSub1: db "A PROCEDURAL", 0
 StrTitleSub2: db "PIRATE VOYAGE", 0
