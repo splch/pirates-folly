@@ -60,11 +60,13 @@ then flash it to a cartridge or open it in any Game Boy emulator
   rolls): 8 HP, quick guns, and a 60–123 gold hoard.
 - **Battery save, twice over.** Two rotating save slots with sequence
   numbers; a corrupted slot falls back to the other copy automatically.
-- **Hull is life.** Ramming land, enemy shot, and storm-tossed drifting all
-  cost hull (watch the **H** reading at the bottom of the screen, beside your
-  gold and fragment count). At 0 you wreck: lose half your gold and wake in
-  open water with a patched hull. Your **greatest gold haul** is remembered on
-  the seed screen — and a fully inked chart pays a 500-gold bounty.
+- **Hull is life.** Ramming a wild coast, enemy shot, and storm-tossed
+  drifting all cost hull (watch the **H** reading at the bottom of the
+  screen, beside your gold and fragment count); port shores are soft —
+  bumping a dock costs nothing. At 0 you wreck: lose half your gold and
+  wake in open water with a patched hull. Your **greatest gold haul** is
+  remembered on the seed screen — and a fully inked chart pays a 500-gold
+  bounty.
 
 See [MANUAL.md](MANUAL.md) for the full captain's handbook.
 

@@ -119,8 +119,9 @@ the moment you leave the dock.
 
 * Hold a direction to build speed; release it and the ship coasts to a
   stop. She answers slowly, like any proud vessel.
-* **Ramming land damages the hull.** Come about before the sandbar, not
-  after.
+* **Ramming land damages the hull** — but a port's shore is a dock, not
+  a rock: bumping into dock planks just stops the ship. Come about before
+  the sandbar, not after; aim for the planks anytime.
 * Sailing into a new part of the world inks it onto your Sea Chart.
   Newly charted waters are not always empty — pirates and storms favor
   the unknown.
