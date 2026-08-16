@@ -32,7 +32,7 @@ then flash it to a cartridge or open it in any Game Boy emulator
 |---|---|---|---|
 | D-pad | Sail (momentum — ease off!) | Menus | Edit seed digits |
 | A | Dock at a beach / fire cannons / **dig** on an isle | Confirm / buy (RIGHT) | New game (seed screen) |
-| B | Quit to seed screen (unsaved) | Back / set sail | — |
+| B | Quit to seed screen (press twice; unsaved) | Back / set sail | — |
 | START | **The chart** (your map fills in as you explore) | — | Continue a saved game |
 
 - **Eight hex digits, one ocean.** `DEADBEEF` is a fine first sea. **A** starts
@@ -48,8 +48,9 @@ then flash it to a cartridge or open it in any Game Boy emulator
 - **Digging.** An isle's beach only gives up its fragment once its guardian
   is sunk.
 - **Hull is life.** Ramming land, enemy shot, and storm-tossed drifting all
-  cost hull. At 0 you wreck: lose half your gold and wake in open water with
-  a patched hull.
+  cost hull (watch the **H** reading at the bottom of the screen, beside your
+  gold and fragment count). At 0 you wreck: lose half your gold and wake in
+  open water with a patched hull.
 
 See [MANUAL.md](MANUAL.md) for the full captain's handbook.
 

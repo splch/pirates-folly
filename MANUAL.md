@@ -93,11 +93,14 @@ There are 65,536 seas awaiting. No two alike.
 
 ## THE SHIP'S HUD
 
-At the bottom of the screen, your instruments keep three readings:
+At the bottom of the screen, your instruments keep two rows of readings:
 
 * **TX** — your east-west position, in hex, by tile.
 * **TY** — your north-south position, in hex, by tile.
 * **SPD** — your current speed. Watch it near land!
+* **H** — hull remaining. When it reaches zero, see SHIPWRECK.
+* **G** — gold in the hold.
+* **F** — chart fragments found, out of 9.
 
 A good navigator notes the coordinates of anything worth finding again.
 
@@ -142,8 +145,9 @@ answer with your own broadside; your gunners aim true at any enemy in
 sight. Sink a pirate and plunder his gold.
 
 **Storms.** Dark weather blows up without warning and drags the ship
-where it will. Keep a firm hand on the helm — a captain who fights the
-rudder keeps his hull; a captain who abandons it does not.
+where it will — hard enough that a bold captain can ride the blow like a
+fast current, if he dares. Keep a firm hand on the helm: a captain who
+fights the rudder keeps his hull; a captain who abandons it does not.
 
 **Hull is life.** Enemy shot, hidden rocks, and storm-tossed drifting all
 cost hull. When the hull reaches zero, see SHIPWRECK, and say a prayer.
