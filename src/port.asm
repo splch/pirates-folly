@@ -1367,6 +1367,8 @@ SaveGame::
     ld [$A003], a
     xor a
     ld [$0000], a                  ; RAM disable
+    ld a, 1
+    ld [wHasSave], a               ; a save exists now: editor offers LOAD
     ret
 
 ; Validate + load save. Sets wHasSave (1 = loaded). Called at boot.
