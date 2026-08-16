@@ -37,7 +37,7 @@ wFX:            db
 wFY:            db
 wWX::           dw          ; current tile x (generation/detail)
 wGRrow::        db          ; current tile y (low byte; detail hash)
-wGRrowH:        db          ; current tile y, high byte (world rows 256-287)
+wGRrowH::       db          ; current tile y, high byte (world rows 256-287)
 wH00:           db
 wH10:           db
 wH01:           db
@@ -304,7 +304,7 @@ TileAttr:
 ; in: a = TILE_SAND (a beach tile at wWX/wGRrow); out: a = TILE_DOCK if the
 ; tile's 4x4 district is a port district, else TILE_SAND. Pure function of
 ; seed+coords, so streamed and redrawn tiles always agree. clobbers all.
-DockTileIfPort:
+DockTileIfPort::
     ld a, [wWX]
     ld l, a
     ld a, [wWX+1]
