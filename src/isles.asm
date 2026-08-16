@@ -418,8 +418,8 @@ UpdateDig::
     ld [wState], a
     ret
 
-; a = number of set bits in wFragMask
-CountFrags:
+; a = number of set bits in wFragMask. clobbers a, c, d, h, l
+CountFrags::
     ld a, [wFragMask]
     ld l, a
     ld a, [wFragMask+1]

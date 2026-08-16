@@ -25,6 +25,7 @@ DEF DIR_MASK    EQU PADF_UP | PADF_DOWN | PADF_LEFT | PADF_RIGHT
 ; --- Auto-repeat tuning (frames) ---
 DEF REPEAT_DELAY EQU 24
 DEF REPEAT_RATE  EQU 6
+DEF QUIT_CFM_T   EQU 150    ; B-at-sea quit: confirm window (~2.5 s)
 
 ; --- Tile IDs ---
 DEF TILE_BLANK    EQU 0

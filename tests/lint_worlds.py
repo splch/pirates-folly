@@ -95,7 +95,9 @@ for s in SEEDS:
                 if district_land_game(dx, dy, seed16): ports_game_land += 1
                 if district_land_full(dx, dy, seed16): ports_true_land += 1
     print(f"seed {s:08X} seed16 {seed16:04X} landless isles: {bad}")
-    # back to editor for next seed: B quits sailing
+    # back to editor for next seed: B twice quits sailing (quit confirm)
+    pb.button_press("b"); pb.tick(); pb.button_release("b")
+    for _ in range(5): pb.tick()
     pb.button_press("b"); pb.tick(); pb.button_release("b")
     for _ in range(30): pb.tick()
 

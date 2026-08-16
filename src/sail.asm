@@ -25,6 +25,8 @@ wTileY::    dw
 wHeading::  db              ; 0=N 1=E 2=S 3=W
 wAnimPhase: db
 wHudDigits: ds 8            ; TX (3), TY (3), SPD (2)
+wQuitCfm::  db              ; B-quit confirm window (frames left)
+wHudRow1:   ds 15           ; window row 1: stats line / quit message
 
 SECTION "Shadow OAM", WRAM0, ALIGN[8]
 wShadowOAM:: ds 160
@@ -69,6 +71,13 @@ EnterSail::
     ld [wAnimPhase], a
     ld [wStagePend], a
     ld [wDmgCool], a
+    ld [wQuitCfm], a
+    ld hl, wHudRow1            ; first SailVBlank runs before the first
+    ld b, 15                   ; SailHud: don't show power-on garbage
+.clrRow1
+    ld [hli], a
+    dec b
+    jr nz, .clrRow1
     call ComputeShipPx
     call SailCamera
     call SailRedrawBody
@@ -275,15 +284,35 @@ HudVBlank:
     ld [$9C0C], a
     ld a, [hli]
     ld [$9C0D], a
+    ; window row 1: 15 tiles staged by SailHud (stats or quit confirm)
+    ld hl, wHudRow1
+    ld de, $9C20
+    ld b, 15
+.row1
+    ld a, [hli]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .row1
     ret
 
 ; ---------------------------------------------------------------------------
 ; Game logic (runs after VBlank work; no VRAM access here)
 ; ---------------------------------------------------------------------------
 UpdateSail::
+    ; B quits to the seed screen UNSAVED: require a confirming second press
     ld a, [wJoyNew]
     and PADF_B
     jr z, .notB
+    ld a, [wQuitCfm]
+    and a
+    jr nz, .quit
+    ld a, QUIT_CFM_T
+    ld [wQuitCfm], a
+    jr .notB
+.quit
+    xor a
+    ld [wQuitCfm], a
     call LeaveSail
     ret
 .notB
@@ -300,6 +329,13 @@ UpdateSail::
     dec a
     ld [wDmgCool], a
 .noCool
+    ; quit-confirm window tick
+    ld a, [wQuitCfm]
+    and a
+    jr z, .noCfm
+    dec a
+    ld [wQuitCfm], a
+.noCfm
     ; A = dock if possible, else fire cannons
     ld a, [wJoyNew]
     and PADF_A
@@ -898,6 +934,58 @@ SailHud:
     call AbsA
     add b
     call WriteHexPair
+    ; --- window row 1: quit-confirm message or HULL/GOLD/FRAG stats ---
+    ld a, [wQuitCfm]
+    and a
+    jr z, .stats
+    ld hl, StrQuitCfm
+    ld de, wHudRow1
+    ld b, 15
+.cfm
+    ld a, [hli]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .cfm
+    ret
+.stats
+    ld de, wHudRow1
+    ld a, TILE_A + 7                 ; 'H'
+    ld [de], a
+    inc de
+    ld a, [wHull]
+    call PrintDec2
+    ld a, TILE_SPACE
+    ld [de], a
+    inc de
+    ld a, TILE_A + 6                 ; 'G'
+    ld [de], a
+    inc de
+    ld a, [wGold+1]
+    ld h, a
+    ld a, [wGold]
+    ld l, a
+    call PrintDec4                   ; clamps to 9999
+    ld a, TILE_SPACE
+    ld [de], a
+    inc de
+    ld a, TILE_A + 5                 ; 'F'
+    ld [de], a
+    inc de
+    push de
+    call CountFrags                  ; clobbers d!
+    pop de
+    add TILE_HEX0
+    ld [de], a
+    inc de
+    ld a, TILE_SLASH
+    ld [de], a
+    inc de
+    ld a, TILE_HEX0 + 9
+    ld [de], a
+    inc de
+    ld a, TILE_SPACE
+    ld [de], a
     ret
 
 AbsA::
@@ -944,3 +1032,4 @@ WriteHexPair:
 
 SECTION "Sail strings", ROM0
 StrWreck:   db "SHIPWRECK!", 0
+StrQuitCfm: db "B AGAIN TO QUIT"    ; exactly 15 chars, no terminator
