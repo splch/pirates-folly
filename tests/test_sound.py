@@ -5,7 +5,14 @@ from pyboy import PyBoy
 ROOT = Path(__file__).resolve().parents[1]
 ROM = str(ROOT / "pirates_folly.gb")
 SYM = str(ROOT / "build" / "pirates_folly.sym")
-pb = PyBoy(ROM, window="null")
+
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 syms = {}
 for line in open(SYM):
@@ -45,12 +52,36 @@ press("start"); press("a", 60)
 assert mem[syms["wSongID"]] == 2, f"sail song {mem[syms['wSongID']]}"
 print("sail music OK")
 
-# battle music: force an enemy active
-mem[syms["wStormT"]] = 200
-for _ in range(5): pb.tick()
+# battle music: start a real storm. Music follows hazard transitions
+# (StartStorm/StormTick), not per-frame polling, so poke the stateful RNG
+# and sail into a pre-charted cell instead of poking wStormT directly.
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_regress import xs16, _set_rng
+_STORM = next(s for s in range(1, 0x10000)
+              if (xs16(s) & 0xFF) >= 17 and (xs16(s) >> 8) < 3)
+cx, cy = mem[syms["wShipCX"]], mem[syms["wShipCY"]]
+isles = {(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
+         for k in range(9)}
+assert (cx + 1, cy) not in isles, "east cell is an isle cell: no rolls there"
+bit = cy * 16 + cx + 1
+mem[syms["wExplored"] + bit // 8] |= 1 << (bit % 8)   # revisited cell
+mem[syms["wEnemyActive"]] = 0
+_set_rng(mem, _STORM)
+pb.button_press("right")
+for _ in range(300):
+    pb.tick()
+    if mem[syms["wShipCX"]] == cx + 1:
+        break
+pb.button_release("right")
+for _ in range(10):
+    pb.tick()
+assert mem[syms["wStormT"]] | mem[syms["wStormT"] + 1], "storm never started"
 assert mem[syms["wSongID"]] == 4, f"battle song {mem[syms['wSongID']]}"
-mem[syms["wStormT"]] = 1
-for _ in range(8): pb.tick()
+mem[syms["wStormT"]] = 1   # expires next tick: transition back to calm
+mem[syms["wStormT"] + 1] = 0
+for _ in range(8):
+    pb.tick()
 assert mem[syms["wSongID"]] == 2, f"back to sail {mem[syms['wSongID']]}"
 print("battle/calm switching OK")
 

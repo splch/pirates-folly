@@ -19,6 +19,8 @@ SECTION "SGB", ROM0
 ; in: hl = 16-byte packet. Bit-banged over JOYP bits 4/5: start pulse,
 ; 128 data bits (LSB first; P14 low = 0, P15 low = 1), stop 0 bit.
 ; Pulses >= 5 M-cycles, spaces >= 15 M-cycles, per pandocs.
+; Timing is nop-counted for NORMAL CPU speed: never call this with CGB
+; double speed active — the SGB would see 2x-fast pulses and drop the packet.
 SGBSendPacket:
     xor a
     ldh [rJOYP], a             ; start pulse: P14+P15 low
@@ -96,13 +98,22 @@ SGBFillSeqMap:
     jr nz, .row
     ret
 
-; in: a = ROM bank, hl = source (ROMX), de = dest (VRAM), bc = count. LCD off.
+; in: a = ROM bank, hl = source (ROMX), de = dest (VRAM), bc = count
+; (must be a multiple of 8). LCD off. Unrolled 8x like CopyVRAM.
 SGBCopyROMtoVRAM:
     ld [$2000], a              ; MBC5 ROM bank select
+    srl b
+    rr c
+    srl b
+    rr c
+    srl b
+    rr c                         ; bc = count / 8
 .loop
+    REPT 8
     ld a, [hli]
     ld [de], a
     inc de
+    ENDR
     dec bc
     ld a, b
     or c

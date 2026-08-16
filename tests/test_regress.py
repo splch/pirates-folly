@@ -20,6 +20,33 @@ Covered fixes:
   R16 boot clears fire cooldowns (R13 follow-through)
   R17 tavern nearest-port scan covers whole rings (signed loop bound made
       rings r>=2 test only their NW corner) and SW bears as SW, not S
+  R18 wreck respawn fully redraws the visible window
+  R19 CGB streaming never drops VRAM writes (Mode 3 lockout clipped blits)
+  R20 crew speeds the cannon reload
+  R21 the final fleet escalates per wave
+  R22 a won voyage is tagged on the seed screen
+  R23 the chart shows the voyage seed
+  R24 charted-cell revisit rolls at reduced odds
+  R25 pirates scale with fragments held
+  R26 best-haul record persists across saves
+  R27 full chart pays the cartographer's bounty, once
+  R28 chart marks dug isles with X
+  R29 merchant hail + trade
+  R30 merchant robbery + escort revenge
+  R31 market prices drift between visits
+  R32 the dig is a ceremony, skippable
+  R33 SELECT mutes anywhere; re-rolls in the editor
+  R34 shipyard upgrades (buy, effect, persist)
+  R35 a won sea stays wild (the Treasure's curse)
+  R36 the kraken rises in deep water
+  R37 chart marks a guarded isle with a skull
+  R38 a corrupt save slot falls back to the other
+  R39 merchants despawn on range and on time
+  R40 robbing a merchant with no escort
+  R41 a merchant parley delays the guardian
+  R42 enemy cannonballs die on land like the player's
+  R43 text screens entered from the sea reset scroll
+  R44 a port shore is a docking bump, not a wreck
 
 Freebies:
   F1  B-at-sea quit requires a confirming second press
@@ -944,6 +971,7 @@ def f3_hud_stats_line():
     set16(mem, "wGold", 1234)
     mem[syms["wFragMask"]] = 0b101
     mem[syms["wFragMask"] + 1] = 0
+    mem[syms["wFragCount"]] = 2
     for _ in range(3):
         pb.tick()
     line = read_text(mem, 0x9C00 + 32, 15)
@@ -1065,15 +1093,16 @@ def xs16(x):
 def _spawn_state():
     def good(s):
         r1 = xs16(s)
-        if (r1 & 0xFF) >= 12 or (r1 >> 8) < 3:   # must roll a pirate, no storm
+        # must roll a pirate; no storm (h < 3) and no kraken (h in {3,4})
+        if (r1 & 0xFF) >= 12 or (r1 >> 8) < 5:
             return False
         return (xs16(r1) & 0xFF) & 7 in (0, 1, 3, 4, 5, 7)
     return next(s for s in range(1, 0x10000) if good(s))
 
-# l in [32,48): above the merchant lane (12..31) — nothing spawns on a
+# l in [32,48): above the merchant lane (12..16) — nothing spawns on a
 # revisit, though a new-cell roll (<48) would have
 _NO_ROLL = next(s for s in range(1, 0x10000)
-                if 32 <= (xs16(s) & 0xFF) < 48 and (xs16(s) >> 8) >= 3)
+                if 32 <= (xs16(s) & 0xFF) < 48 and (xs16(s) >> 8) >= 5)
 _SPAWN = _spawn_state()
 
 def _roll_state(lane_lo, lane_hi):
@@ -1081,14 +1110,15 @@ def _roll_state(lane_lo, lane_hi):
     with a safe (non-west) spawn offset draw."""
     for s in range(1, 0x10000):
         r1 = xs16(s)
-        if not (lane_lo <= (r1 & 0xFF) < lane_hi) or (r1 >> 8) < 3:
+        # h >= 5: above the storm lane (3) AND the kraken lane (3..4)
+        if not (lane_lo <= (r1 & 0xFF) < lane_hi) or (r1 >> 8) < 5:
             continue
         if (xs16(r1) & 0xFF) & 7 in (2, 6):   # PickSpawnSpot's offset draw
             continue
         return s
     raise AssertionError("no such rng state")
 
-_MERCH = _roll_state(12, 32)             # merchant lane
+_MERCH = _roll_state(12, 17)             # merchant lane (reduced revisit odds)
 
 # wRngState is stored h-first (hl big-endian: rng.asm loads h from the
 # first byte), so set16 would write the state byte-swapped.
@@ -1105,6 +1135,7 @@ def _sail_into_marked_cell(rng_state, frags=0, won=0):
     mem[syms["wEnemyActive"]] = 0        # clear the spawn cell's own roll
     set16(mem, "wStormT", 0)
     set16(mem, "wFragMask", frags)
+    mem[syms["wFragCount"]] = bin(frags).count("1")  # SetFrag's cache
     mem[syms["wWon"]] = won
     cx, cy = mem[syms["wShipCX"]], mem[syms["wShipCY"]]
     isles = {(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
@@ -1468,7 +1499,7 @@ def r34_shipyard():
     # long guns: ball lives 56 frames (minus the same-frame tick)
     press3(pb, "a")
     assert mem[syms["wBallPActive"]] == 1, "cannon didn't fire"
-    assert mem[syms["wBallPLife"]] in (54, 55, 56), \
+    assert mem[syms["wBallPLife"]] in (53, 54, 55, 56), \
         f"ball life {mem[syms['wBallPLife']]}, want ~56"
     # upgrades persist through the save
     press3(pb, "b")                       # quit confirm

@@ -24,6 +24,23 @@ Mul8::
     jr nz, .loop
     ret
 
+; in: a = index (0..255), hl = word-table base; out: hl = table[a].
+; The coordinate-hash multiplies are constant-per-axis, so the hot paths
+; (LatHash, TileDetail, DistrictHash) read them from LUTs via this helper.
+; clobbers: a, b, c
+IdxWord::
+    add a                          ; 2*index; carry set for index >= 128
+    ld c, a
+    ld b, 0
+    jr nc, .noCarry
+    inc b
+.noCarry
+    add hl, bc
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    ret
+
 ; Stateless 16-bit mixer (xorshift rounds: >>8, <<7, >>9, <<8).
 ; Deterministic: same input always gives same output. Used as the
 ; coordinate hash for world generation.

@@ -8,6 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 ROM = str(ROOT / "pirates_folly.gb")
 SYM = str(ROOT / "build" / "pirates_folly.sym")
 
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(). Part 2 below reloads THIS copy's save, so both parts share it.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
 def load_symbols():
     syms = {}
     for line in open(SYM):
@@ -49,7 +55,7 @@ def dock(pb, syms):
     assert mem[syms["wState"]] == 4, "docking failed"
 
 # ==== part 1: port flow ====
-pb = PyBoy(ROM, window="null")
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 syms = load_symbols()
 mem = pb.memory
@@ -100,9 +106,7 @@ pb.stop()
 print("PORT FLOW OK")
 
 # ==== part 2: save/load round trip ====
-import os
-sav = ROM.replace(".gb", ".sav")
-pb2 = PyBoy(ROM, window="null")
+pb2 = PyBoy(RUN, window="null")
 pb2.set_emulation_speed(0)
 mem2 = pb2.memory
 syms = load_symbols()

@@ -3,7 +3,13 @@ from pathlib import Path
 from pyboy import PyBoy
 
 ROOT = Path(__file__).resolve().parents[1]
-pb = PyBoy(str(ROOT / "pirates_folly.gb"), window="null")
+ROM = str(ROOT / "pirates_folly.gb")
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 mem = pb.memory
 for _ in range(120): pb.tick()

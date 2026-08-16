@@ -130,6 +130,33 @@ DEF PIRATE_FIRECOOL EQU 75      ; frames between pirate volleys
 DEF GUARD_HP        EQU 5
 DEF GUARD_FIRECOOL  EQU 50      ; guardians shoot ~1.5x faster
 
+; --- Encounter rolls (combat.asm SpawnCheck / RevisitRoll) ---
+; One 16-bit hash/RNG roll is split into lanes: l picks pirate/merchant,
+; h picks storm/kraken. Revisit widths are ~1/4 of the new-cell rates
+; (except the kraken, already vanishingly rare). The Python world models
+; in tests/ mirror these exactly.
+DEF ENC_SALT        EQU $C37A   ; encounter hash salt
+DEF ENC_PIRATE_NEW  EQU 48      ; new cell: pirate ~19%
+DEF ENC_MERCH_NEW   EQU 20      ; merchant lane width above the pirate lane
+DEF ENC_STORM_NEW   EQU 13      ; storm ~5%
+DEF ENC_KRAKEN_W    EQU 2       ; kraken lane width above the storm lane
+DEF ENC_PIRATE_REV  EQU 12      ; revisited cell: pirate ~4.7%
+DEF ENC_MERCH_REV   EQU 5       ; merchant ~2%
+DEF ENC_STORM_REV   EQU 3       ; storm ~1.2%
+
+; --- Enemy AI / merchant behavior ---
+DEF ENEMY_HOLD_RANGE EQU 40     ; approach until Chebyshev range <= this
+DEF ENEMY_FIRE_RANGE EQU 90     ; open fire inside this range
+DEF ENEMY_GIVE_UP    EQU 121    ; despawn when farther than this (px, either axis)
+DEF MERCH_HAIL_RANGE EQU 20     ; merchant hails inside this range
+DEF MERCH_GONE_RANGE EQU 141    ; merchant leaves when farther than this
+DEF MERCH_TIME       EQU 900    ; merchant despawn timer (~15 s)
+
+; --- Final battle state (wFinal; 1-4 = wave to spawn) ---
+DEF FINAL_NONE        EQU 0
+DEF FINAL_ALL_SPAWNED EQU 5
+DEF FINAL_DONE        EQU 6
+
 ; --- Sailing physics ---
 DEF SAIL_MAX_VEL  EQU 40      ; velocity cap, 1/16 px/frame (= 2.5 px/frame)
 DEF SAIL_CAM_MAX_X EQU 2392   ; camera clamp: keeps tileX+20 <= 319

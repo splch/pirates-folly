@@ -7,8 +7,19 @@ ROOT = Path(__file__).resolve().parents[1]
 ROM = str(ROOT / "pirates_folly.gb")
 SYM = str(ROOT / "build" / "pirates_folly.sym")
 
-pb = PyBoy(ROM, window="null")
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_regress import teleport  # retrying teleport: single writes can
+                                   # tear mid-frame and trip the land revert
 syms = {}
 for line in open(SYM):
     p = line.split()
@@ -87,8 +98,7 @@ isle0 = (mem[syms["wIsles"]], mem[syms["wIsles"] + 1])
 print("isle 0 cell:", isle0)
 # teleport to the isle cell's NW water area: tile (cx*20+2, cy*18+2) px*8
 tx, ty = find_approach(isle0)
-set16("wPosX", (tx * 8) << 4)
-set16("wPosY", (ty * 8) << 4)
+assert teleport(pb, tx, ty), "teleport to isle 0's cell never stuck"
 # guardian spawn retries one random offset per frame until one lands on
 # water, so poll instead of assuming a fixed frame count
 for _ in range(600):
@@ -152,9 +162,9 @@ set16("wGuardMask", 0x100)  # its guardian pre-defeated
 set16("wFragMask", 0x1FE - 0x100)  # collect all but bit 8 -> 0xFE... recompute: bits 0-7 = 0xFF? we have isle0 already
 # actually: currently fragMask has isle0; set bits 1-7 too:
 set16("wFragMask", 0x00FF)  # isles 0-7 collected
+mem[syms["wFragCount"]] = 8   # SetFrag's cached count (the 9th dig makes 9)
 tx, ty = find_approach(isle8)
-set16("wPosX", (tx * 8) << 4)
-set16("wPosY", (ty * 8) << 4)
+assert teleport(pb, tx, ty), "teleport to isle 8's cell never stuck"
 for _ in range(10):
     pb.tick()
 # guardian for isle 8 will try to spawn (guard bit set -> TestGuard says defeated -> no spawn)

@@ -10,7 +10,14 @@ for line in open(SYM):
     p = line.split()
     if len(p) == 2:
         syms[p[1]] = int(p[0].split(":")[1], 16)
-pb = PyBoy(ROM, window="null")
+
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 mem = pb.memory
 def press(btn, wait=30):

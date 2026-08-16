@@ -21,9 +21,13 @@ assert rom[0x14B] == 0x33, f"old licensee {rom[0x14B]:#x}"
 assert rom[0x148] == 0x01 and len(rom) == 65536, "must be a 64 KiB ROM now"
 
 # --- DMG: detection says no-SGB, boot/sail unaffected ---
-import os, pyboy as _pb
+import os, shutil, tempfile, pyboy as _pb
 BOOT = os.path.join(os.path.dirname(_pb.__file__), "core", "bootrom_dmg.bin")
-pb = PyBoy(ROM, window="null", cgb=False, bootrom=BOOT)
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+pb = PyBoy(RUN, window="null", cgb=False, bootrom=BOOT)
 pb.set_emulation_speed(0)
 mem = pb.memory
 for _ in range(150): pb.tick()
@@ -36,7 +40,7 @@ assert mem[syms["wState"]] == 2, "not sailing on DMG"
 print("DMG: no SGB detected, sailing OK")
 
 # --- forced SGB: the whole border-transfer path must run and recover ---
-pb2 = PyBoy(ROM, window="null", cgb=False, bootrom=BOOT)
+pb2 = PyBoy(RUN, window="null", cgb=False, bootrom=BOOT)
 pb2.set_emulation_speed(0)
 mem2 = pb2.memory
 for _ in range(150): pb2.tick()

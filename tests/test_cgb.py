@@ -11,8 +11,14 @@ for line in open(SYM):
     if len(p) == 2:
         syms[p[1]] = int(p[0].split(":")[1], 16)
 
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
 # --- CGB mode ---
-pb = PyBoy(ROM, window="null", cgb=True)
+pb = PyBoy(RUN, window="null", cgb=True)
 pb.set_emulation_speed(0)
 mem = pb.memory
 for _ in range(150): pb.tick()
@@ -44,7 +50,7 @@ print("CGB MODE OK")
 import os, pyboy as _pb
 BOOTROM_DMG = os.environ.get("PYBOY_DMG_BOOTROM",
     os.path.join(os.path.dirname(_pb.__file__), "core", "bootrom_dmg.bin"))
-pb2 = PyBoy(ROM, window="null", cgb=False, bootrom=BOOTROM_DMG)
+pb2 = PyBoy(RUN, window="null", cgb=False, bootrom=BOOTROM_DMG)
 pb2.set_emulation_speed(0)
 mem2 = pb2.memory
 for _ in range(150): pb2.tick()

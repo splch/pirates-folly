@@ -8,12 +8,15 @@ SECTION "Isles WRAM", WRAM0
 wIsles:      ds 18        ; 9 x (cellX, cellY)
 wFragMask::  dw           ; fragment collected per isle
 wGuardMask:: dw           ; guardian defeated per isle
+wFragCount:: db           ; cached popcount of wFragMask (SetFrag maintains it)
 wCurIsle::   db
 wIsGuardian:: db
 wFinal::     db           ; 0=none, 1-4=wave to spawn, 5=all spawned, 6=done
 wWon::       db
 wLastCellX:  db
 wLastCellY:  db
+wIsleCell::  db           ; CellWatch's cached IsIsleCell for the current cell
+                         ; ($FF = not an isle cell; recomputed on cell change)
 wBaseTX:     dw
 wBaseTY:     dw
 wNpDir::     db
@@ -39,6 +42,8 @@ ISLE_TRY_DY: db 0, 0, 0, 1, -1, 1
 POPS
 
 ComputeIsles::
+    ld a, $FF
+    ld [wIsleCell], a              ; new sea: the isle-cell cache is unknown
     xor a
     ld [wChX], a                   ; k
 .kLoop
@@ -249,7 +254,7 @@ TestGuard::
     inc a
     ret
 
-; in: a = isle index; set its fragment bit
+; in: a = isle index; set its fragment bit (and bump the cached count)
 SetFrag:
     call BitMask16
     ld a, [wFragMask]
@@ -258,6 +263,8 @@ SetFrag:
     ld a, [wFragMask+1]
     or h
     ld [wFragMask+1], a
+    ld hl, wFragCount
+    inc [hl]
     ret
 
 ; in: a = isle index; set its guardian-defeated bit
@@ -335,7 +342,7 @@ CellWatch::
     ld a, [wFinal]
     and a
     jr z, .notFinal
-    cp 5
+    cp FINAL_ALL_SPAWNED
     ret nc                         ; all waves spawned (or done)
     ld a, [wEnemyActive]
     and a
@@ -351,7 +358,7 @@ CellWatch::
     inc [hl]                       ; consume the wave only if it spawned
     ret
 .notFinal
-    ; track cell changes (dig/wCurIsle bookkeeping)
+    ; the isle lookup is recomputed only when the ship's cell changes
     ld a, [wShipCX]
     ld hl, wLastCellX
     cp [hl]
@@ -359,19 +366,19 @@ CellWatch::
     ld a, [wShipCY]
     ld hl, wLastCellY
     cp [hl]
-    jr z, .sameCell
+    jr z, .watch
 .changed
     ld a, [wShipCX]
     ld [wLastCellX], a
-    ld a, [wShipCY]
-    ld [wLastCellY], a
-.sameCell
-    ; isle cell with a living guardian and no active enemy?
-    ld a, [wShipCX]
     ld b, a
     ld a, [wShipCY]
+    ld [wLastCellY], a
     ld c, a
     call IsIsleCell
+    ld [wIsleCell], a
+.watch
+    ; isle cell with a living guardian and no active enemy?
+    ld a, [wIsleCell]
     cp $FF
     ret z
     ld [wCurIsle], a
@@ -395,8 +402,8 @@ CellWatch::
 ; then DigReveal pays off. Any key skips the ceremony.
 DigScene::
     ld a, [wCurIsle]
-    call SetFrag
-    call CountFrags
+    call SetFrag                     ; also bumps wFragCount
+    ld a, [wFragCount]
     ld [wDigCount], a              ; the reveal reads it after the ceremony
     call ClearTextScreen
     ld hl, StrDigSpot
@@ -457,7 +464,7 @@ UpdateDig::
     and a
     jr z, .revealed
     ld b, a
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and a
     jr nz, .revealNow              ; any key skips the ceremony
     ld a, b
@@ -478,7 +485,7 @@ UpdateDig::
     call DigReveal
     ret
 .revealed
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and a
     ret z
     call SailRedraw
@@ -509,7 +516,7 @@ CountFrags::
 ; Victory
 ; ---------------------------------------------------------------------------
 Victory::
-    ld a, 6
+    ld a, FINAL_DONE
     ld [wFinal], a
     ld a, 1
     ld [wWon], a
@@ -541,7 +548,7 @@ Victory::
     ret
 
 UpdateWin::
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and a
     ret z
     call SailRedraw

@@ -1,6 +1,6 @@
-; PIRATE'S FOLLY — M0 generator demo
-; Seed editor (d-pad edits 8 hex digits, A generates) → island view
-; (A = random new seed, B = back to editor).
+; PIRATE'S FOLLY — boot, main loop, state machine, title & seed editor.
+; Title (Drunken Sailor) → seed editor (8 hex digits; A = new voyage with
+; the edited seed, START = continue a save, SELECT = re-roll) → sailing.
 
 INCLUDE "hardware.inc"
 INCLUDE "defs.inc"
@@ -21,25 +21,59 @@ SECTION "Header", ROM0[$0100]
     db $33                      ; $014B: old licensee $33 — required for SGB
     ds $0150 - @, 0
 
+SECTION "Hot HRAM", HRAM
+; The frame loop's hottest bytes: ldh saves a cycle and a byte per access.
+hVBlankFlag::   db
+hFrameCounter:: db
+hJoyHeld::      db
+hJoyNew::       db
+
 SECTION "Shared WRAM", WRAM0
-wVBlankFlag::   db
-wFrameCounter:: db
 wState::        db
 wCursor::       db
 wRepCtr::       db
 wRepEff::       db
-wJoyHeld::      db
-wJoyNew::       db
 wSeed::         ds 4           ; nibbles n0..n7, big-endian pairs
 wSeedNib::      ds 8
 wSeed16::      dw             ; seed folded to 16 bits for the generator
 wRngState::    dw
 wIsCGB::       db             ; $11 = CGB/AGB (boot ROM leaves it in a)
 wIsSGB::       db             ; $14 = SGB/SGB2 (boot ROM leaves it in c)
+wIsAGB::       db             ; 1 = AGB (boot ROM leaves b bit 0 set; CGB only)
+
+SECTION "Volatile WRAM", WRAM0
+; Per-voyage encounter state, cleared with ONE span loop at boot and in
+; InitNewGame — the old per-var scatter lists drifted apart twice (R13/R16).
+; wEnemyFlash..wSmokeT MUST stay contiguous (combat.asm's fx tick loop).
+wVoyStateStart::
+wStormT::       dw              ; storm frames remaining
+wStormDX::      db
+wStormDY::      db
+wStormDmgT::    db
+wEnemyActive::  db
+wBallPActive::  db
+wBallEActive::  db
+wFireCool::     db
+wEnemyFireCool:: db
+wEnemyFlash::   db              ; enemy hit-flash frames (blink)
+wSinkT::        db              ; sinking-animation frames
+wSplashT::      db              ; ball splash frames
+wSmokeT::       db              ; muzzle-smoke frames
+wMerchActive::  db
+wMerchT::       dw              ; despawn timer
+wMerchHailed::  db              ; 1 = the offer was already made
+wEscortPend::   db              ; 1 = a robbed merchant's escort still seeks water
+wPriceDrift::   db              ; bumps on every dock: prices drift between visits
+wCollX::        dw              ; SailCollide: ship px at the last check
+wCollY::        dw
+wVoyStateEnd::
+STATIC_ASSERT wVoyStateEnd - wVoyStateStart < 256
 
 SECTION "Main", ROM0[$0150]
 EntryPoint:
     di
+    ld d, b                      ; boot ROM: B bit 0 set on AGB
+    ld e, c                      ; boot ROM: $14 on SGB/SGB2, $13 on DMG/MGB
     ld b, a                      ; stash boot ROM's hardware id
     ld a, 3
     ld [$2000], a                ; data bank (tiles/sound/text) at $4000 —
@@ -49,9 +83,15 @@ EntryPoint:
                                  ; LoadTiles and thereby restores it.
     ld a, b
     ld [wIsCGB], a               ; boot ROM: $11 on CGB/AGB, $01 on DMG
-    ld a, c
-    ld [wIsSGB], a               ; boot ROM: $14 on SGB/SGB2, $13 on DMG/MGB
+    ld a, e
+    ld [wIsSGB], a
+    ld a, d
+    and 1
+    ld [wIsAGB], a               ; only meaningful when wIsCGB == $11
     ld sp, $E000
+    xor a
+    ld [$0000], a                ; defensive: MBC5 RAM enable off at boot —
+                                 ; SRAM stays enabled only inside Save/Load
 
 .waitVb                          ; LCD is on after boot ROM; find VBlank
     ldh a, [rLY]
@@ -80,29 +120,15 @@ EntryPoint:
     ; power-on WRAM is random on hardware (PyBoy zeroes it, emulators like
     ; binjgb do not): clear volatile combat/storm state so no phantom
     ; storm, enemy, or cannonball is already "active" on the first frame
+    ld hl, wVoyStateStart
+    ld b, wVoyStateEnd - wVoyStateStart
     xor a
-    ld [wStormT], a
-    ld [wStormT+1], a
-    ld [wStormDX], a
-    ld [wStormDY], a
-    ld [wStormDmgT], a
-    ld [wEnemyActive], a
-    ld [wBallPActive], a
-    ld [wBallEActive], a
-    ld [wFireCool], a
-    ld [wEnemyFireCool], a
-    ld [wEnemyFlash], a
-    ld [wSinkT], a
-    ld [wSplashT], a
-    ld [wSmokeT], a
+.voyClr
+    ld [hli], a
+    dec b
+    jr nz, .voyClr
     ld [wCursor], a
-    ld [wMerchActive], a           ; a merchant is per-voyage, never saved
-    ld [wMerchT], a
-    ld [wMerchT+1], a
-    ld [wMerchHailed], a
-    ld [wEscortPend], a
     ld [wMuted], a
-    ld [wPriceDrift], a
     ld a, PIRATE_FIRECOOL          ; sane default for hand-placed enemies
     ld [wEnemyFireRate], a
     ld a, 25
@@ -112,6 +138,7 @@ EntryPoint:
     ld [wMarkTX+1], a
     ld [wMarkTY], a
     ld [wMarkTY+1], a
+    ld [wIsleCell], a            ; isle-cell cache: unknown
     ld [wShipCX], a              ; cell cache invalid too: the first
     ld [wShipCY], a              ; MarkExplored always counts as a cell entry
 
@@ -203,19 +230,19 @@ EntryPoint:
 
 MainLoop:
     halt                         ; only VBlank is enabled: wakes once/frame
-    ld a, [wVBlankFlag]
+    ldh a, [hVBlankFlag]
     and a
     jr z, MainLoop
     xor a
-    ld [wVBlankFlag], a
-    ld hl, wFrameCounter
+    ldh [hVBlankFlag], a
+    ld hl, hFrameCounter
     inc [hl]
     ; SELECT toggles sound everywhere but the seed editor (there it
     ; re-rolls the seed). Uses last frame's edges: ReadJoypad runs later.
     ld a, [wState]
     and a                          ; STATE_EDIT
     jr z, .noMute
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_SELECT
     call nz, ToggleMute
 .noMute
@@ -272,7 +299,7 @@ MainLoop:
 VBlankHandler:
     push af
     ld a, 1
-    ld [wVBlankFlag], a
+    ldh [hVBlankFlag], a
     pop af
     reti
 
@@ -319,7 +346,7 @@ UpdateEdit:
     ld [hl], a
 .notDown
     ; A = new game, START = continue loaded game
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_START
     jr z, .notStart
     ld a, [wHasSave]
@@ -330,7 +357,7 @@ UpdateEdit:
     ld [wState], a
     ret
 .notStart
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A
     jr z, .notNewGame
     call ComposeSeed
@@ -341,7 +368,7 @@ UpdateEdit:
     ld [wState], a
     ret
 .notNewGame
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_SELECT
     jr z, .render
     ; SELECT: roll a fresh random seed into the editor
@@ -424,7 +451,7 @@ RenderSeedRow::
     inc de
     dec b
     jr nz, .digitLoop
-    ld a, [wFrameCounter]
+    ldh a, [hFrameCounter]
     and %00010000                ; blink at ~2 Hz
     ld c, a
     ld de, $9800 + 3 * 32 + 6
@@ -604,26 +631,15 @@ InitNewGame:
     ld [wWon], a
     ld [wIsGuardian], a
     ld [wCartDone], a            ; bounty is per-voyage (wBestGold persists)
-    ld [wPriceDrift], a
-    ld [wMerchActive], a         ; a fresh sea: no leftover encounters
-    ld [wMerchT], a
-    ld [wMerchT+1], a
-    ld [wMerchHailed], a
-    ld [wEscortPend], a
-    ld [wStormT], a              ; a storm/enemy from a B-quit voyage must
-    ld [wStormT+1], a            ; not follow the player into the new one
-    ld [wStormDX], a
-    ld [wStormDY], a
-    ld [wStormDmgT], a
-    ld [wEnemyActive], a
-    ld [wBallPActive], a
-    ld [wBallEActive], a
-    ld [wFireCool], a
-    ld [wEnemyFireCool], a
-    ld [wEnemyFlash], a
-    ld [wSinkT], a
-    ld [wSplashT], a
-    ld [wSmokeT], a
+    ld [wFragCount], a
+    ; a storm/enemy/merchant from a B-quit voyage must not follow the
+    ; player into the new one (same span the boot clear uses)
+    ld hl, wVoyStateStart
+    ld b, wVoyStateEnd - wVoyStateStart
+.voyClr
+    ld [hli], a
+    dec b
+    jr nz, .voyClr
     ld hl, wExplored             ; + wPortCells (contiguous, 64 B total)
     ld b, 64
 .clr
@@ -676,7 +692,7 @@ DrawTitleScreen::
 
 ; Any A/START press -> seed editor.
 UpdateTitle::
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A | PADF_START
     ret z
     call ShowSeedScreen

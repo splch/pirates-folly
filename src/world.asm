@@ -7,8 +7,10 @@ INCLUDE "hardware.inc"
 INCLUDE "defs.inc"
 INCLUDE "text.inc"
 
+SECTION "Stage HRAM", HRAM
+hStagePend::    db          ; bit 0: column pending, bit 1: row pending
+
 SECTION "World WRAM", WRAM0
-wStagePend::    db          ; bit 0: column pending, bit 1: row pending
 wStageRowTiles: ds 21
 wStageColTiles: ds 19
 wStageRowAttrs: ds 21       ; CGB palette per staged tile
@@ -62,18 +64,37 @@ SECTION "World gen", ROMX, BANK[3]
 ; Core noise
 ; ---------------------------------------------------------------------------
 
+PUSHS "Worldgen multiply tables", ROM0
+; ix*97 (0..40) and iy*61 (0..36) for LatHash; wx*29 (0..319) and
+; wyLow*53 (0..255) for TileDetail. 1.6 KB of ROM to skip Mul8's inner loop.
+MUL97_TAB:
+FOR i, 40 + 1
+    dw i * 97
+ENDR
+MUL61_TAB:
+FOR i, 36 + 1
+    dw i * 61
+ENDR
+MUL29_TAB:
+FOR i, WORLD_W
+    dw i * 29
+ENDR
+MUL53_TAB:
+FOR i, 256
+    dw i * 53
+ENDR
+POPS
+
 ; Lattice hash. in: d = ix (0..40), e = iy (0..36); out: a = hash byte.
 ; clobbers: a, b, c, d, e, h, l
 LatHash:
-    push de                      ; Mul8 clobbers d AND e — save inputs!
     ld a, d
-    ld b, 97
-    call Mul8
-    pop de
+    ld hl, MUL97_TAB
+    call IdxWord                   ; hl = ix*97
     push hl
     ld a, e
-    ld b, 61
-    call Mul8
+    ld hl, MUL61_TAB
+    call IdxWord                   ; hl = iy*61
     pop de
     add hl, de
     ld a, [wSeed16]
@@ -153,12 +174,12 @@ Bilerp4:
 ; out: a = hash & 15
 TileDetail:
     ld a, [wWX]
-    ld b, 29
-    call Mul8
+    ld hl, MUL29_TAB
+    call IdxWord                   ; hl = wx*29 (low byte: wWX low is exact)
     push hl
     ld a, [wGRrow]
-    ld b, 53
-    call Mul8
+    ld hl, MUL53_TAB
+    call IdxWord                   ; hl = wyLow*53
     pop de
     add hl, de
     ld a, [wSeed16]
@@ -403,9 +424,14 @@ GenRowStage::
     dec a
     ld [wJCount], a
     jr nz, .hashLoop
-    ; per tile
+    ; per tile: fx and the lattice offset j advance incrementally
+    ; (fx cycles 0..7; j increments whenever fx wraps)
     xor a
     ld [wK], a
+    ld [wJ], a
+    ld a, [wTileX]
+    and 7
+    ld [wFX], a
 .tileLoop
     ld a, [wTileX]
     ld hl, wK
@@ -414,19 +440,7 @@ GenRowStage::
     ld a, [wTileX+1]
     adc 0
     ld [wWX+1], a
-    ; fx
-    ld a, [wWX]
-    and 7
-    ld [wFX], a
-    ; j = (wx>>3) - ix0
-    ld a, [wWX]
-    ld l, a
-    ld a, [wWX+1]
-    ld h, a
-    SR16 h, l, 3
-    ld a, l
-    ld hl, wIX0
-    sub [hl]
+    ld a, [wJ]                     ; j = (wx>>3) - ix0
     ld e, a
     ld d, 0
     ld hl, wLatTop
@@ -457,6 +471,15 @@ GenRowStage::
     ld hl, wStageRowAttrs
     add hl, de
     ld [hl], c
+    ld a, [wFX]                    ; next tile: fx/j step
+    inc a
+    and 7
+    ld [wFX], a
+    jr nz, .noJIncrX
+    ld a, [wJ]
+    inc a
+    ld [wJ], a
+.noJIncrX
     ld a, [wK]
     inc a
     ld [wK], a
@@ -544,9 +567,14 @@ GenColStage::
     dec a
     ld [wJCount], a
     jr nz, .hashLoop
-    ; per tile row
+    ; per tile row: fy and the lattice offset j advance incrementally
+    ; (fy cycles 0..7; j increments whenever fy wraps)
     xor a
     ld [wK], a
+    ld [wJ], a
+    ld a, [wTileY]
+    and 7
+    ld [wFY], a
 .tileLoop
     ld a, [wTileY]
     ld hl, wK
@@ -555,15 +583,7 @@ GenColStage::
     ld a, [wTileY+1]
     adc 0
     ld [wGRrowH], a              ; wy high byte (rows 256-287)
-    ld h, a
-    ld a, [wGRrow]
-    ld l, a                      ; hl = wy, full 9 bits (<= 287 by camera clamp)
-    and 7                        ; a = wy & 7 (h/l keep wy)
-    ld [wFY], a
-    SR16 h, l, 3                ; hl = wy >> 3
-    ld a, l
-    ld hl, wIY0
-    sub [hl]
+    ld a, [wJ]                   ; j = (wy>>3) - iy0
     ld e, a
     ld d, 0
     ld hl, wLatTop
@@ -594,6 +614,15 @@ GenColStage::
     ld hl, wStageColAttrs
     add hl, de
     ld [hl], c
+    ld a, [wFY]                  ; next tile: fy/j step
+    inc a
+    and 7
+    ld [wFY], a
+    jr nz, .noJIncrY
+    ld a, [wJ]
+    inc a
+    ld [wJ], a
+.noJIncrY
     ld a, [wK]
     inc a
     ld [wK], a
@@ -630,6 +659,9 @@ MapRowAddr::
 ; followed by mode 2 (>= 20 M-cycles of access), so the write right after
 ; the poll always lands. Falls through instantly in VBlank and with LCD
 ; off (mode reads 0). Overruns then merely stretch into the visible frame.
+; NOTE: STAT is only ever READ here and in BlitColPass — a mid-frame STAT
+; WRITE on DMG can raise a spurious STAT IRQ (pandocs: STAT quirks), so
+; keep this a read-only poll.
 BlitRowPass:
     push hl                      ; src
     ld a, [wStageRow]
@@ -976,6 +1008,19 @@ FindSpawn::
 ; Fog of war + chart
 ; ---------------------------------------------------------------------------
 
+PUSHS "Cell division tables", ROM0
+; tx/20 and ty/18 for MarkExplored/MarkPortCell (byte LUTs beat the
+; subtract-loop DivHLb for these two constant divisors)
+DIV20_TAB:
+FOR i, WORLD_W
+    db i / 20
+ENDR
+DIV18_TAB:
+FOR i, WORLD_H
+    db i / 18
+ENDR
+POPS
+
 ; hl /= b -> a (hl destroyed). clobbers a, b, c, hl
 DivHLb::
     ld c, 0
@@ -1059,12 +1104,14 @@ MarkExplored::
     ld a, d
     ld [wMarkTY+1], a
     push de                        ; ty
-    ld b, 20
-    call DivHLb                    ; a = cell x (clobbers bc, hl; keeps de)
+    ld de, DIV20_TAB
+    add hl, de
+    ld a, [hl]                     ; a = cell x (tx / 20)
     ld [wNewCX], a
     pop hl                         ; hl = ty
-    ld b, 18
-    call DivHLb                    ; a = cell y
+    ld de, DIV18_TAB
+    add hl, de
+    ld a, [hl]                     ; a = cell y (ty / 18)
     ld [wNewCY], a
     ; a tile crossing inside the ship's own cell changes nothing
     ld hl, wShipCY
@@ -1107,15 +1154,17 @@ MarkPortCell::
     ld l, a
     ld a, [wBeachX+1]
     ld h, a
-    ld b, 20
-    call DivHLb
+    ld de, DIV20_TAB
+    add hl, de
+    ld a, [hl]
     ld [wChX], a                   ; beach cell X
     ld a, [wBeachY]
     ld l, a
     ld a, [wBeachY+1]
     ld h, a
-    ld b, 18
-    call DivHLb                    ; a = beach cell Y
+    ld de, DIV18_TAB
+    add hl, de
+    ld a, [hl]                     ; a = beach cell Y
     swap a                         ; cy*16 (cy <= 15)
     ld hl, wChX
     add a, [hl]
@@ -1362,7 +1411,7 @@ EnterChart::
 
 ; Chart input: A/B/START returns to sailing.
 UpdateChart::
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A | PADF_B | PADF_START
     ret z
     call SailRedraw

@@ -43,14 +43,25 @@ LoadTiles::
     ld de, $8000 + 12 * 16
     ld bc, 16
     ; fall through
+; in: hl = src, de = dst, bc = count (must be a multiple of 8).
+; Unrolled 8x: 3 instructions per byte instead of 7.
 CopyVRAM::
+    srl b
+    rr c
+    srl b
+    rr c
+    srl b
+    rr c                         ; bc = count / 8
+.loop
+    REPT 8
     ld a, [hli]
     ld [de], a
     inc de
+    ENDR
     dec bc
     ld a, b
     or c
-    jr nz, CopyVRAM
+    jr nz, .loop
     ret
 
 ; ---------------------------------------------------------------------------
@@ -73,25 +84,99 @@ CGBInit::
     dec b
     jr nz, .clr
     VBK0
-    ; BG palettes 0-3
+    ; BG palettes 0-3 (AGB-corrected when the boot ROM flagged an AGB:
+    ; its screen renders low 5-bit values nearly black, pandocs suggests
+    ; per-field v -> 3v/4 + 8)
     ld a, $80                      ; index 0, auto-increment
     ldh [rBGPI], a
+    ld c, LOW(rBGPD)
     ld hl, CGB_BGP
-    ld b, 32
+    ld b, 16                       ; 16 words = 4 palettes x 4 colors
 .bgl
-    ld a, [hli]
-    ldh [rBGPD], a
+    call PalWord
     dec b
     jr nz, .bgl
     ; OBJ palettes 0-1
     ld a, $80
     ldh [rOBPI], a
-    ld b, 16
+    ld c, LOW(rOBPD)
+    ld b, 8
 .obl
-    ld a, [hli]
-    ldh [rOBPD], a
+    call PalWord
     dec b
     jr nz, .obl
+    ret
+
+; Write one RGB555 word from [hl+] to palette data register [c],
+; AGB-corrected when wIsAGB. clobbers a, d, e (hl advanced by 2)
+PalWord:
+    ld a, [hli]
+    ld e, a
+    ld a, [hli]
+    ld d, a                        ; de = color word (d high, e low)
+    ld a, [wIsAGB]
+    and a
+    jr z, .plain
+    push bc
+    push hl
+    ld h, d
+    ld l, e
+    call AGBFixColor
+    ld d, h
+    ld e, l
+    pop hl
+    pop bc
+.plain
+    ld a, e
+    ldh [c], a
+    ld a, d
+    ldh [c], a
+    ret
+
+; in/out: hl = RGB555 color, each 5-bit field v -> (3v >> 2) + 8.
+; clobbers a, b, c, d, e
+AGBFixColor:
+    push hl
+    ld a, l
+    and 31
+    call .fix5
+    ld c, a                        ; red'
+    pop hl
+    push hl
+    SR16 h, l, 5
+    ld a, l
+    and 31
+    call .fix5
+    ld d, a                        ; green'
+    pop hl
+    SR16 h, l, 10
+    ld a, l
+    and 31
+    call .fix5
+    ld e, a                        ; blue'
+    ; recombine: h = (green' >> 3) | (blue' << 2), l = (green' << 5) | red'
+    ld h, 0
+    ld l, d
+    SR16 h, l, 3
+    ld a, e
+    add a
+    add a
+    or h
+    ld h, a
+    ld a, d
+    REPT 5
+    add a, a
+    ENDR
+    or c
+    ld l, a
+    ret
+.fix5                            ; a = v (0..31) -> (3v >> 2) + 8 (max 31)
+    ld b, a
+    add a
+    add b
+    srl a
+    srl a
+    add 8
     ret
 
 PUSHS "CGB palette data", ROMX, BANK[3]
@@ -606,6 +691,10 @@ TerrainTiles:
 
 HexFont:
 ; 3x5 pixel glyphs, top-left of the tile. 16 tiles: 0-9, A-F.
+; NOTE: A-F exist twice — here (tiles 26-31, so hex nibbles print as
+; value + TILE_HEX0) and as letters A-F (tiles 40-45, charmap). 96 B of
+; duplicated tile data buys much simpler hex-print code everywhere; ROM is
+; not tight enough to matter. Deliberate — don't merge them.
 ; 0
     dw `33300000
     dw `30300000

@@ -37,11 +37,6 @@ wNpY:       db
 wCandX::    db          ; candidate district under test
 wCandY::    db
 wNpFound:   db
-wPriceDrift:: db        ; bumps on every dock: prices drift between visits
-wSaveSlot:: db          ; which slot the next SaveGame writes (0/1)
-wSaveSeq::  db          ; rolling sequence: the newer save wins on load
-wSlot0Ok:   db          ; LoadGame probe results
-wSlot1Ok:   db
 wMerchPhase: db         ; 1 = offer shown, 2 = result shown
 wMerchGood:: db
 wMerchQty::  db
@@ -210,17 +205,29 @@ TryDock::
 ; District hashing
 ; ---------------------------------------------------------------------------
 
+PUSHS "District multiply tables", ROM0
+; dx*37 (0..79) and dy*91 (0..71) for DistrictHash — LUTs skip Mul8's loop
+MUL37_TAB:
+FOR i, 80
+    dw i * 37
+ENDR
+MUL91_TAB:
+FOR i, 72
+    dw i * 91
+ENDR
+POPS
+
 ; in: b = dx (0..79), c = dy (0..71); out: hl = hash16
 DistrictHash:
-    push bc                      ; Mul8 clobbers b AND c — save dy!
+    push bc                      ; IdxWord clobbers b AND c — save dy!
     ld a, b
-    ld b, 37
-    call Mul8
+    ld hl, MUL37_TAB
+    call IdxWord                   ; hl = dx*37
     pop bc
     push hl
     ld a, c
-    ld b, 91
-    call Mul8
+    ld hl, MUL91_TAB
+    call IdxWord                   ; hl = dy*91
     pop de
     add hl, de
     ld a, [wSeed16]
@@ -698,6 +705,36 @@ RenderTrade:
     call DrawCursor
     ret
 
+; in: b = cost; out: carry set and gold unchanged iff gold < cost, else
+; gold -= cost and carry clear. clobbers a, h, l
+TrySpendGold::
+    ld a, [wGold]
+    ld l, a
+    ld a, [wGold+1]
+    ld h, a
+    ld a, l
+    cp b
+    ld a, h
+    sbc 0
+    ret c                          ; can't afford
+    ld a, l
+    sub b
+    ld [wGold], a
+    ld a, h
+    sbc 0
+    ld [wGold+1], a
+    ret
+
+; in: b = amount; gold += amount (16-bit). clobbers a
+AddGold::
+    ld a, [wGold]
+    add b
+    ld [wGold], a
+    ld a, [wGold+1]
+    adc 0
+    ld [wGold+1], a
+    ret
+
 ; total cargo in a
 TotalCargo:
     ld a, [wCargo]
@@ -710,7 +747,7 @@ TotalCargo:
     ret
 
 TradeInput:
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_B
     jr z, .notB
     xor a
@@ -718,7 +755,7 @@ TradeInput:
     ld [wPortMenu], a
     jp .redraw
 .notB
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_UP
     jr z, .notUp
     ld a, [wPortMenu]
@@ -727,7 +764,7 @@ TradeInput:
     ld [wPortMenu], a
     jr .redraw
 .notUp
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_DOWN
     jr z, .notDown
     ld a, [wPortMenu]
@@ -736,33 +773,18 @@ TradeInput:
     ld [wPortMenu], a
     jr .redraw
 .notDown
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_RIGHT
     jr z, .notRight
-    ; buy 1
-    ld a, [wPortMenu]
-    call GoodPrice
-    ld b, a                          ; price
-    ld a, [wGold]
-    ld l, a
-    ld a, [wGold+1]
-    ld h, a
-    ; gold >= price?
-    ld a, l
-    cp b
-    ld a, h
-    sbc 0
-    ret c
+    ; buy 1 (hold space first: spending is atomic in TrySpendGold)
     call TotalCargo
     cp CARGO_MAX
     ret nc
-    ; gold -= price
-    ld a, [wGold]
-    sub b
-    ld [wGold], a
-    ld a, [wGold+1]
-    sbc 0
-    ld [wGold+1], a
+    ld a, [wPortMenu]
+    call GoodPrice
+    ld b, a                          ; price
+    call TrySpendGold
+    ret c
     ; cargo[sel]++
     ld a, [wPortMenu]
     ld hl, wCargo
@@ -772,7 +794,7 @@ TradeInput:
     inc [hl]
     jr .redraw
 .notRight
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_LEFT
     ret z
     ; sell 1
@@ -788,12 +810,7 @@ TradeInput:
     ld a, [wPortMenu]
     call GoodPrice
     ld b, a
-    ld a, [wGold]
-    add b
-    ld [wGold], a
-    ld a, [wGold+1]
-    adc 0
-    ld [wGold+1], a
+    call AddGold
 .redraw
     ld a, 1
     ld [wPortDirty], a
@@ -929,7 +946,7 @@ UpdatePort::
     cp PSHIPYARD
     jp z, ShipyardInput
     ; all other sub-states: B returns to main, A acts (repair/recruit)
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_B
     jr z, .chkA
     xor a
@@ -939,7 +956,7 @@ UpdatePort::
     ld [wPortDirty], a
     ret
 .chkA
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A
     ret z
     ld a, [wPortState]
@@ -957,19 +974,18 @@ UpdatePort::
     ret
 
 MainInput:
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_B
     jr z, .notB
     ; set sail
     call SaveGame
-    ld a, SONG_SAIL
-    call SetSong
+    call UpdateSailMusic           ; storm may still be blowing outside
     call SailRedraw
     ld a, STATE_SAIL
     ld [wState], a
     ret
 .notB
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_UP
     jr z, .notUp
     ld a, [wPortMenu]
@@ -982,7 +998,7 @@ MainInput:
     ld [wPortMenu], a
     jr .moved
 .notUp
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_DOWN
     jr z, .notDown
     ld a, [wPortMenu]
@@ -997,7 +1013,7 @@ MainInput:
     call DrawCursor
     ret
 .notDown
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A
     ret z
     ld a, [wPortMenu]
@@ -1015,6 +1031,7 @@ MainInput:
     jr z, .save
     ; SET SAIL
     call SaveGame
+    call UpdateSailMusic           ; storm may still be blowing outside
     call SailRedraw
     ld a, STATE_SAIL
     ld [wState], a
@@ -1055,21 +1072,9 @@ RepairAction:
     ld a, [wHull]
     cp b
     ret nc
-    ld a, [wGold]
-    ld l, a
-    ld a, [wGold+1]
-    ld h, a
-    ld a, l
-    cp REPAIR_COST
-    ld a, h
-    sbc 0
+    ld b, REPAIR_COST
+    call TrySpendGold
     ret c
-    ld a, [wGold]
-    sub REPAIR_COST
-    ld [wGold], a
-    ld a, [wGold+1]
-    sbc 0
-    ld [wGold+1], a
     ld a, [wHull]
     inc a
     ld [wHull], a
@@ -1079,21 +1084,9 @@ RecruitAction:
     ld a, [wCrew]
     cp CREW_MAX
     ret nc
-    ld a, [wGold]
-    ld l, a
-    ld a, [wGold+1]
-    ld h, a
-    ld a, l
-    cp RECRUIT_COST
-    ld a, h
-    sbc 0
+    ld b, RECRUIT_COST
+    call TrySpendGold
     ret c
-    ld a, [wGold]
-    sub RECRUIT_COST
-    ld [wGold], a
-    ld a, [wGold+1]
-    sbc 0
-    ld [wGold+1], a
     ld a, [wCrew]
     inc a
     ld [wCrew], a
@@ -1210,18 +1203,9 @@ ShipyardBuy:
     call UpgCost
     and a
     ret z                            ; maxed
-    ld b, a                          ; cost (<= 250: check the high byte too)
-    ld a, [wGold]
-    cp b
-    ld a, [wGold+1]
-    sbc 0
+    ld b, a                          ; cost
+    call TrySpendGold
     ret c                            ; can't afford
-    ld a, [wGold]
-    sub b
-    ld [wGold], a
-    ld a, [wGold+1]
-    sbc 0
-    ld [wGold+1], a
     ld a, [wPortMenu]
     and a
     jr z, .plate
@@ -1247,7 +1231,7 @@ ShipyardBuy:
     ret
 
 ShipyardInput:
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_B
     jr z, .notB
     xor a
@@ -1255,7 +1239,7 @@ ShipyardInput:
     ld [wPortMenu], a
     jp .redraw
 .notB
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_UP
     jr z, .notUp
     ld a, [wPortMenu]
@@ -1264,7 +1248,7 @@ ShipyardInput:
     ld [wPortMenu], a
     jr .redraw
 .notUp
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_DOWN
     jr z, .notDown
     ld a, [wPortMenu]
@@ -1276,7 +1260,7 @@ ShipyardInput:
     ld [wPortMenu], a
     jr .redraw
 .notDown
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A
     ret z
     call ShipyardBuy
@@ -1379,17 +1363,9 @@ MerchBuy:
     ld b, a
     ld a, [wMerchPrice]
     call Mul8                      ; hl = cost (<= 6*12 = 72, fits l)
-    ld a, [wGold]
-    cp l
-    ld a, [wGold+1]
-    sbc 0
+    ld b, l
+    call TrySpendGold
     jr c, .poor
-    ld a, [wGold]
-    sub l
-    ld [wGold], a
-    ld a, [wGold+1]
-    sbc 0
-    ld [wGold+1], a
     ld a, [wMerchGood]
     ld e, a
     ld d, 0
@@ -1416,12 +1392,7 @@ MerchRob:
     and 31
     add 30                         ; 30..61 gold from the strongbox
     ld b, a
-    ld a, [wGold]
-    add b
-    ld [wGold], a
-    ld a, [wGold+1]
-    adc 0
-    ld [wGold+1], a
+    call AddGold
     ld a, SFX_COIN
     call PlaySfx
     pop hl
@@ -1445,13 +1416,13 @@ UpdateMerch::
     ld a, [wMerchPhase]
     cp 2
     jr z, .result
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A
     jr z, .notBuy
     call MerchBuy
     jr .toResult
 .notBuy
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_B
     ret z
     call MerchRob
@@ -1460,7 +1431,7 @@ UpdateMerch::
     ld [wMerchPhase], a
     ret
 .result
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and a
     ret z
     call SailRedraw
@@ -1506,8 +1477,14 @@ PrintStr::
     inc de
     jr PrintStr
 
-; a = value -> 2 decimal digits at de (leading zero). clobbers a, b, c, de
+; a = value -> 2 decimal digits at de (leading zero). Values above 99
+; are clamped: a 3-digit quotient would index past '9' in the font.
+; clobbers a, b, c, de
 PrintDec2::
+    cp 100
+    jr c, .ok
+    ld a, 99
+.ok
     ld b, 10
     call DivA
     add TILE_HEX0
@@ -1635,268 +1612,8 @@ PrintPortName:
     call WordEntry
     jp PrintStr
 
-; ---------------------------------------------------------------------------
-; Save / load (MBC5 battery RAM at $A000)
-; ---------------------------------------------------------------------------
-
-DEF SAVE_MAGIC_0 EQU $53
-DEF SAVE_MAGIC_1 EQU $46
-DEF SAVE_VERSION EQU 6          ; v6: two rotating slots + sequence byte. v5 rejected.
-DEF SAVE_SLOT1 EQU $A070        ; slot 0 is $A000; records are 99 B ($70 slots)
-
-; Copy b bytes from de to hl, advancing both. clobbers a, b, de, hl
-CopyToSRAM:
-    ld a, [de]
-    inc de
-    ld [hli], a
-    dec b
-    jr nz, CopyToSRAM
-    ret
-
-; Save game state to cart RAM.
-SaveGame::
-    ; best haul: keep the largest gold pile this cart has ever held
-    ld a, [wGold]
-    ld l, a
-    ld a, [wGold+1]
-    ld h, a
-    ld a, [wBestGold+1]
-    cp h
-    jr c, .newBest
-    jr nz, .bestDone
-    ld a, [wBestGold]
-    cp l
-    jr nc, .bestDone
-.newBest
-    ld a, h
-    ld [wBestGold+1], a
-    ld a, l
-    ld [wBestGold], a
-.bestDone
-    ld a, $0A
-    ld [$0000], a                  ; RAM enable
-    ; two rotating slots: one corrupted save never costs the whole voyage
-    ld a, [wSaveSlot]
-    and a
-    ld hl, $A000
-    jr z, .haveBase
-    ld hl, SAVE_SLOT1
-.haveBase
-    push hl                        ; slot base
-    ld a, SAVE_MAGIC_0
-    ld [hli], a
-    ld a, SAVE_MAGIC_1
-    ld [hli], a
-    ld a, SAVE_VERSION
-    ld [hli], a
-    xor a
-    ld [hli], a                    ; checksum placeholder
-    ld a, [wSaveSeq]
-    ld [hli], a
-    ; data layout ($A004..$A061): seed(4) pos(4) gold+hull+crew+cargo(8)
-    ; explored(32) lastport(2) fragmask+guardmask(4) final+won(2)
-    ; portcells(32) bestgold(2) cartdone(1) upgrades(3)
-    ld de, wSeed
-    ld b, 4
-    call CopyToSRAM
-    ld de, wPosX                   ; wPosX/wPosY are contiguous
-    ld b, 4
-    call CopyToSRAM
-    ld de, wGold                   ; wGold/wHull/wCrew/wCargo are contiguous
-    ld b, 8
-    call CopyToSRAM
-    ld de, wExplored
-    ld b, 32
-    call CopyToSRAM
-    ld de, wLastPortDX             ; DX/DY contiguous
-    ld b, 2
-    call CopyToSRAM
-    ld de, wFragMask               ; wFragMask/wGuardMask contiguous
-    ld b, 4
-    call CopyToSRAM
-    ld de, wFinal                  ; wFinal/wWon contiguous
-    ld b, 2
-    call CopyToSRAM
-    ld de, wPortCells              ; $A03C..$A05B
-    ld b, 32
-    call CopyToSRAM
-    ld de, wBestGold
-    ld b, 2
-    call CopyToSRAM
-    ld de, wCartDone
-    ld b, 1
-    call CopyToSRAM
-    ld de, wHullMax               ; 3 contiguous upgrade bytes
-    ld b, 3
-    call CopyToSRAM
-    ; checksum = sum of the 94 data bytes at slot base + 5
-    pop de                         ; slot base
-    ld h, d
-    ld l, e
-    ld bc, 5
-    add hl, bc
-    ld c, 94
-    xor a
-.sum
-    add a, [hl]
-    inc hl
-    dec c
-    jr nz, .sum
-    ld hl, 3
-    add hl, de                     ; checksum lives at base + 3
-    ld [hl], a
-    ld a, [wSaveSeq]               ; roll the sequence and the slot
-    inc a
-    ld [wSaveSeq], a
-    ld a, [wSaveSlot]
-    xor 1
-    ld [wSaveSlot], a
-    xor a
-    ld [$0000], a                  ; RAM disable
-    ld a, 1
-    ld [wHasSave], a               ; a save exists now: editor offers LOAD
-    ret
-
-; Copy b bytes from hl to de, advancing both. clobbers a, b, de, hl
-CopyFromSRAM:
-    ld a, [hli]
-    ld [de], a
-    inc de
-    dec b
-    jr nz, CopyFromSRAM
-    ret
-
-; in: hl = slot base; out: a = 1 iff magic+version+checksum pass.
-; clobbers a, c, h, l
-ValidateSlot:
-    push hl
-    ld a, [hli]
-    cp SAVE_MAGIC_0
-    jr nz, .bad
-    ld a, [hli]
-    cp SAVE_MAGIC_1
-    jr nz, .bad
-    ld a, [hli]
-    cp SAVE_VERSION
-    jr nz, .bad
-    inc hl                         ; checksum byte
-    inc hl                         ; sequence byte
-    ld c, 94
-    xor a
-.sum
-    add a, [hl]
-    inc hl
-    dec c
-    jr nz, .sum
-    pop hl
-    push hl
-    inc hl
-    inc hl
-    inc hl                         ; stored checksum at base + 3
-    cp [hl]
-    jr nz, .bad
-    pop hl
-    ld a, 1
-    ret
-.bad
-    pop hl
-    xor a
-    ret
-
-; Validate both slots and load the newest valid one. Sets wHasSave (1 =
-; loaded). Called at boot.
-LoadGame::
-    ld a, $0A
-    ld [$0000], a
-    ld hl, $A000
-    call ValidateSlot
-    ld [wSlot0Ok], a
-    ld hl, SAVE_SLOT1
-    call ValidateSlot
-    ld [wSlot1Ok], a
-    ld a, [wSlot0Ok]
-    and a
-    jr z, .noSlot0
-    ld a, [wSlot1Ok]
-    and a
-    jr z, .slot0                   ; only slot 0 is good
-    ld a, [SAVE_SLOT1 + 4]         ; both good: the higher sequence wins
-    ld hl, $A004
-    sub [hl]                       ; seq1 - seq0 (8-bit; wraps at 256)
-    jr z, .slot0
-    bit 7, a                       ; negative: slot 0 is newer
-    jr z, .slot1
-.slot0
-    ld de, $A000
-    xor a
-    jr .load
-.noSlot0
-    ld a, [wSlot1Ok]
-    and a
-    jp z, .fail                    ; the copy block pushed .fail past jr range
-.slot1
-    ld de, SAVE_SLOT1
-    ld a, 1
-.load
-    xor 1
-    ld [wSaveSlot], a              ; next save goes to the other slot
-    ld h, d
-    ld l, e
-    inc hl
-    inc hl
-    inc hl
-    inc hl
-    ld a, [hl]                     ; sequence byte
-    ld [wSaveSeq], a
-    inc hl                         ; data starts at base + 5
-    ; load fields (hl walks the data; runs mirror SaveGame)
-    ld de, wSeed
-    ld b, 4
-    call CopyFromSRAM
-    ld de, wPosX
-    ld b, 4
-    call CopyFromSRAM
-    ld de, wGold
-    ld b, 8
-    call CopyFromSRAM
-    ld de, wExplored
-    ld b, 32
-    call CopyFromSRAM
-    ld de, wLastPortDX
-    ld b, 2
-    call CopyFromSRAM
-    ld de, wFragMask
-    ld b, 4
-    call CopyFromSRAM
-    ld de, wFinal
-    ld b, 2
-    call CopyFromSRAM
-    ld de, wPortCells
-    ld b, 32
-    call CopyFromSRAM
-    ld de, wBestGold
-    ld b, 2
-    call CopyFromSRAM
-    ld de, wCartDone
-    ld b, 1
-    call CopyFromSRAM
-    ld de, wHullMax
-    ld b, 3
-    call CopyFromSRAM
-    call FoldSeed16                ; wSeed16 first: ComputeIsles hashes with it
-    call ComputeIsles              ; isles are derived, never saved
-    xor a
-    ld [wNeedSpawn], a             ; loaded: keep position
-    ld a, 1
-    ld [wHasSave], a
-    xor a
-    ld [$0000], a
-    ret
-.fail
-    xor a
-    ld [wHasSave], a
-    ld [$0000], a
-    ret
+; Save/load lives in save.asm (the RS-derived layout is the single source
+; of truth for both copy directions and the checksum)
 
 ; ---------------------------------------------------------------------------
 ; Strings

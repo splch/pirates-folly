@@ -69,7 +69,7 @@ EnterSail::
     ld [wVelY], a
     ld [wHeading], a
     ld [wAnimPhase], a
-    ld [wStagePend], a
+    ldh [hStagePend], a
     ld [wDmgCool], a
     ld [wQuitCfm], a
     ld [wShakeT], a
@@ -238,20 +238,20 @@ SailVBlank::
     ; staged tiles from the logic phase. The blit loops poll STAT before
     ; each write, so overrunning VBlank stretches into the visible frame
     ; instead of dropping writes (see BlitRowPass).
-    ld a, [wStagePend]
+    ldh a, [hStagePend]
     and a
     jr z, .noPend
     bit 0, a
     jr z, .noCol
     call BlitColStage
 .noCol
-    ld a, [wStagePend]
+    ldh a, [hStagePend]
     bit 1, a
     jr z, .noRow
     call BlitRowStage
 .noRow
     xor a
-    ld [wStagePend], a
+    ldh [hStagePend], a
 .noPend
     call AnimWater
     call HudVBlank
@@ -259,7 +259,7 @@ SailVBlank::
 
 ; Swap the two water tiles' graphics every 16 frames.
 AnimWater:
-    ld a, [wFrameCounter]
+    ldh a, [hFrameCounter]
     and $0F
     ret nz
     ld a, [wAnimPhase]
@@ -310,9 +310,74 @@ HudVBlank:
 ; ---------------------------------------------------------------------------
 ; Game logic (runs after VBlank work; no VRAM access here)
 ; ---------------------------------------------------------------------------
+; Thrust (+1/-1 per frame, clamped) then drag for one axis.
+; \1 = +dir pad mask, \2 = -dir pad mask, \3 = velocity var
+MACRO THRUST_DRAG_AXIS
+    ld b, 0                      ; b = thrust flag for Drag
+    ldh a, [hJoyHeld]
+    and \1
+    jr z, .noPos\@
+    ld a, [\3]
+    inc a
+    call ClampVel
+    ld [\3], a
+    ld b, 1
+.noPos\@
+    ldh a, [hJoyHeld]
+    and \2
+    jr z, .noNeg\@
+    ld a, [\3]
+    dec a
+    call ClampVel
+    ld [\3], a
+    ld b, 1
+.noNeg\@
+    ld a, [\3]
+    call Drag
+    ld [\3], a
+ENDM
+
+; Integrate one axis (12.4 fixed point) and clamp to the world.
+; \1 = velocity var, \2 = position var, \3 = max pixel (SHIP_MAX_X/Y)
+MACRO INTEGRATE_AXIS
+    ld a, [\1]
+    ld l, a
+    ld h, 0
+    bit 7, a
+    jr z, .pos\@
+    dec h
+.pos\@
+    ld a, [\2]
+    add l
+    ld [\2], a
+    ld a, [\2+1]
+    adc h
+    ld [\2+1], a
+    ; clamp [0, \3 << 4]: hi >= $F0 = wrapped negative
+    cp $F0
+    jr nc, .zero\@
+    cp HIGH(\3 << 4)
+    jr c, .done\@
+    jr nz, .clamp\@
+    ld a, [\2]
+    cp LOW(\3 << 4)
+    jr c, .done\@
+.clamp\@
+    ld a, LOW(\3 << 4)
+    ld [\2], a
+    ld a, HIGH(\3 << 4)
+    ld [\2+1], a
+    jr .done\@
+.zero\@
+    xor a
+    ld [\2], a
+    ld [\2+1], a
+.done\@
+ENDM
+
 UpdateSail::
     ; B quits to the seed screen UNSAVED: require a confirming second press
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_B
     jr z, .notB
     ld a, [wQuitCfm]
@@ -327,7 +392,7 @@ UpdateSail::
     call LeaveSail
     ret
 .notB
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_START
     jr z, .stay
     call EnterChart
@@ -361,7 +426,7 @@ UpdateSail::
     ld [wHitFlashT], a
 .noHitT
     ; A = dock if possible, else fire cannons
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and PADF_A
     jr z, .noDock
     call TryDock
@@ -402,166 +467,41 @@ UpdateSail::
     call SailSprite
     call RenderCombat
     call SailHud
-    ; music: battle theme while an enemy or storm is active
-    ld a, [wEnemyActive]
-    and a
-    jr nz, .musBat
-    ld a, [wStormT]
-    ld b, a
-    ld a, [wStormT+1]
-    or b
-    jr z, .musCalm
-.musBat
-    ld a, SONG_BATTLE
-    jr .musSet
-.musCalm
-    ld a, SONG_SAIL
-.musSet
-    ld hl, wSongID
-    cp [hl]
-    call nz, SetSong
-    ret
+    ret                            ; music changes on hazard transitions
+                                   ; (UpdateSailMusic), not per frame
 
 SailPhysics:
-    ; --- thrust + drag, X axis (b = thrust flag for Drag) ---
-    ld b, 0
-    ld a, [wJoyHeld]
-    and PADF_RIGHT
-    jr z, .noRight
-    ld a, [wVelX]
-    inc a
-    call ClampVel
-    ld [wVelX], a
-    ld b, 1
-.noRight
-    ld a, [wJoyHeld]
-    and PADF_LEFT
-    jr z, .noLeft
-    ld a, [wVelX]
-    dec a
-    call ClampVel
-    ld [wVelX], a
-    ld b, 1
-.noLeft
-    ld a, [wVelX]
-    call Drag
-    ld [wVelX], a
-    ; --- thrust + drag, Y axis ---
-    ld b, 0
-    ld a, [wJoyHeld]
-    and PADF_UP
-    jr z, .noUp
-    ld a, [wVelY]
-    dec a
-    call ClampVel
-    ld [wVelY], a
-    ld b, 1
-.noUp
-    ld a, [wJoyHeld]
-    and PADF_DOWN
-    jr z, .noDown
-    ld a, [wVelY]
-    inc a
-    call ClampVel
-    ld [wVelY], a
-    ld b, 1
-.noDown
-    ld a, [wVelY]
-    call Drag
-    ld [wVelY], a
+    THRUST_DRAG_AXIS PADF_RIGHT, PADF_LEFT, wVelX
+    THRUST_DRAG_AXIS PADF_DOWN, PADF_UP, wVelY
     ; --- heading from d-pad ---
-    ld a, [wJoyHeld]
+    ldh a, [hJoyHeld]
     and PADF_UP
     jr z, .h1
     xor a
     jr .setH
 .h1
-    ld a, [wJoyHeld]
+    ldh a, [hJoyHeld]
     and PADF_DOWN
     jr z, .h2
     ld a, 2
     jr .setH
 .h2
-    ld a, [wJoyHeld]
+    ldh a, [hJoyHeld]
     and PADF_RIGHT
     jr z, .h3
     ld a, 1
     jr .setH
 .h3
-    ld a, [wJoyHeld]
+    ldh a, [hJoyHeld]
     and PADF_LEFT
     jr z, .noH
     ld a, 3
 .setH
     ld [wHeading], a
 .noH
-    ; --- integrate X ---
-    ld a, [wVelX]
-    ld l, a
-    ld h, 0
-    bit 7, a
-    jr z, .posX
-    dec h
-.posX
-    ld a, [wPosX]
-    add l
-    ld [wPosX], a
-    ld a, [wPosX+1]
-    adc h
-    ld [wPosX+1], a
-    ; clamp [0, SHIP_MAX_X<<4]: hi >= $F0 = wrapped negative
-    cp $F0
-    jr nc, .zeroX
-    cp HIGH(SHIP_MAX_X << 4)
-    jr c, .doneX
-    jr nz, .clampX
-    ld a, [wPosX]
-    cp LOW(SHIP_MAX_X << 4)
-    jr c, .doneX
-.clampX
-    ld a, LOW(SHIP_MAX_X << 4)
-    ld [wPosX], a
-    ld a, HIGH(SHIP_MAX_X << 4)
-    ld [wPosX+1], a
-    jr .doneX
-.zeroX
-    xor a
-    ld [wPosX], a
-    ld [wPosX+1], a
-.doneX
-    ; --- integrate Y ---
-    ld a, [wVelY]
-    ld l, a
-    ld h, 0
-    bit 7, a
-    jr z, .posY
-    dec h
-.posY
-    ld a, [wPosY]
-    add l
-    ld [wPosY], a
-    ld a, [wPosY+1]
-    adc h
-    ld [wPosY+1], a
-    cp $F0
-    jr nc, .zeroY
-    cp HIGH(SHIP_MAX_Y << 4)
-    jr c, .doneY
-    jr nz, .clampY
-    ld a, [wPosY]
-    cp LOW(SHIP_MAX_Y << 4)
-    jr c, .doneY
-.clampY
-    ld a, LOW(SHIP_MAX_Y << 4)
-    ld [wPosY], a
-    ld a, HIGH(SHIP_MAX_Y << 4)
-    ld [wPosY+1], a
-    jr .doneY
-.zeroY
-    xor a
-    ld [wPosY], a
-    ld [wPosY+1], a
-.doneY
+    ; --- integrate (12.4 fixed point) and clamp to the world ---
+    INTEGRATE_AXIS wVelX, wPosX, SHIP_MAX_X
+    INTEGRATE_AXIS wVelY, wPosY, SHIP_MAX_Y
     ret
 
 ; Clamp a to [-wMaxVel, +wMaxVel] (signed via $80 bias). The swift-sails
@@ -665,6 +605,34 @@ ComputeShipPx:
 
 ; Stop and revert if the ship's tile is land.
 SailCollide:
+    ; skip WorldTile entirely while the ship hasn't moved a pixel: the
+    ; world is static, so the last check's verdict still holds (and a
+    ; verdict of "land" always reverts the position, dirtying the cache)
+    ld a, [wShipX]
+    ld hl, wCollX
+    cp [hl]
+    jr nz, .check
+    ld a, [wShipX+1]
+    inc hl
+    cp [hl]
+    jr nz, .check
+    ld a, [wShipY]
+    ld hl, wCollY
+    cp [hl]
+    jr nz, .check
+    ld a, [wShipY+1]
+    inc hl
+    cp [hl]
+    ret z
+.check
+    ld a, [wShipX]
+    ld [wCollX], a
+    ld a, [wShipX+1]
+    ld [wCollX+1], a
+    ld a, [wShipY]
+    ld [wCollY], a
+    ld a, [wShipY+1]
+    ld [wCollY+1], a
     ld a, [wShipX]
     ld l, a
     ld a, [wShipX+1]
@@ -701,6 +669,16 @@ SailCollide:
     ld [wVelX], a
     ld [wVelY], a
     call ComputeShipPx
+    ; cache the reverted position too: its (water) verdict is known, and
+    ; caching the LAND tile here would skip the next frame's collision
+    ld a, [wShipX]
+    ld [wCollX], a
+    ld a, [wShipX+1]
+    ld [wCollX+1], a
+    ld a, [wShipY]
+    ld [wCollY], a
+    ld a, [wShipY+1]
+    ld [wCollY+1], a
     ld a, c
     cp TILE_DOCK
     ret z                          ; docking bump: no damage
@@ -756,6 +734,11 @@ Wreck::
     ld b, 90
 .wait
     halt
+    ldh a, [hVBlankFlag]           ; count VBlanks, not halts: if another
+    and a                          ; interrupt source is ever enabled, halt
+    jr z, .wait                    ; wakes early and the wait would shrink
+    xor a
+    ldh [hVBlankFlag], a
     call UpdateSound               ; MainLoop is parked: tick music here
     dec b
     jr nz, .wait
@@ -771,6 +754,7 @@ Wreck::
     call ComputeShipPx
     call SailCamera
     call SailRedraw
+    call UpdateSailMusic           ; the wreck sting ends; calm or battle
     ret
 
 ; Camera = ship - (80,72), clamped so streaming never leaves the world.
@@ -882,9 +866,9 @@ CheckStream:
     ld d, a
     call GenColStage
 .markCol
-    ld a, [wStagePend]
+    ldh a, [hStagePend]
     or 1
-    ld [wStagePend], a
+    ldh [hStagePend], a
 .xDone
     ; --- Y axis ---
     ld a, [wCamY]
@@ -930,9 +914,9 @@ CheckStream:
     ld d, a
     call GenRowStage
 .markRow
-    ld a, [wStagePend]
+    ldh a, [hStagePend]
     or 2
-    ld [wStagePend], a
+    ldh [hStagePend], a
     ret
 
 ; Ship sprite into shadow OAM (entry 0).
@@ -1021,9 +1005,7 @@ SailHud:
     ld a, TILE_A + 5                 ; 'F'
     ld [de], a
     inc de
-    push de
-    call CountFrags                  ; clobbers d!
-    pop de
+    ld a, [wFragCount]               ; cached popcount (SetFrag maintains it)
     add TILE_HEX0
     ld [de], a
     inc de

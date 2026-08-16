@@ -1,11 +1,11 @@
-# PIRATE'S FOLLY — procedurally generated pirate exploration (M0: generator demo)
+# PIRATE'S FOLLY — procedurally generated pirate exploration for the Game Boy
 
 RGBDS  ?= tools/rgbds/bin/
 RGBASM := $(RGBDS)rgbasm
 RGBLINK := $(RGBDS)rgblink
 RGBFIX := $(RGBDS)rgbfix
 
-SRC := src/main.asm src/joypad.asm src/rng.asm src/tiles.asm src/sail.asm src/world.asm src/port.asm src/combat.asm src/isles.asm src/sound.asm src/sgb.asm
+SRC := src/main.asm src/joypad.asm src/rng.asm src/tiles.asm src/sail.asm src/world.asm src/port.asm src/save.asm src/combat.asm src/isles.asm src/sound.asm src/sgb.asm
 OBJ := $(SRC:src/%.asm=build/%.o)
 
 pirates_folly.gb: $(OBJ)

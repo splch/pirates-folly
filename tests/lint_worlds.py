@@ -55,7 +55,13 @@ def district_land_full(dx, dy, seed16):
             if tile(tx, ty, seed16) >= 3: return True
     return False
 
-pb = PyBoy(ROM, window="null")
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 mem = pb.memory
 for _ in range(150): pb.tick()

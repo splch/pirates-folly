@@ -63,7 +63,13 @@ def open_water(s, rad=15):
         rad -= 2
     return None
 
-pb = PyBoy(ROM, window="null")
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
+pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 mem = pb.memory
 def w16(n): return mem[syms[n]] | mem[syms[n] + 1] << 8

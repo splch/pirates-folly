@@ -5,7 +5,7 @@ INCLUDE "defs.inc"
 
 SECTION "Joypad", ROM0
 
-; Reads the joypad into wJoyHeld (all held buttons) and wJoyNew (newly
+; Reads the joypad into hJoyHeld (all held buttons) and hJoyNew (newly
 ; pressed this frame). Combined byte layout: see PADF_* in defs.inc.
 ReadJoypad::
     ld a, JOYP_GET_CTRL_PAD      ; select d-pad (0 in bit 4)
@@ -28,22 +28,22 @@ ReadJoypad::
     ld b, a
     ld a, JOYP_GET_NONE
     ldh [rJOYP], a               ; deselect
-    ; wJoyNew = held & ~previous
-    ld a, [wJoyHeld]
+    ; hJoyNew = held & ~previous
+    ldh a, [hJoyHeld]
     cpl
     and b
-    ld [wJoyNew], a
+    ldh [hJoyNew], a
     ld a, b
-    ld [wJoyHeld], a
+    ldh [hJoyHeld], a
     ret
 
 ; Direction auto-repeat: wRepEff gets new presses immediately, then repeats
 ; while a direction is held (REPEAT_DELAY frames, then every REPEAT_RATE).
 ComputeRepeat::
-    ld a, [wJoyNew]
+    ldh a, [hJoyNew]
     and DIR_MASK
     jr nz, .fresh
-    ld a, [wJoyHeld]
+    ldh a, [hJoyHeld]
     and DIR_MASK
     jr z, .none
     ld b, a                      ; b = held directions

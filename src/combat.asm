@@ -4,31 +4,26 @@
 INCLUDE "hardware.inc"
 INCLUDE "defs.inc"
 
+; wStorm*/wEnemyActive/wBall*Active/wFireCool/wEnemyFireCool/wMerch* and
+; the fx timers live in main.asm's "Volatile WRAM" span (single-loop clear).
 SECTION "Combat WRAM", WRAM0
-wEnemyActive::  db
 wEnemyX:        dw              ; 12.4 fixed point
 wEnemyY:        dw
 wEnemyHP::      db
-wEnemyFireCool:: db
 wEnemyFireRate:: db             ; per-enemy refire rate (scaled at spawn)
 wEnemyLoot::    db              ; plunder on sinking (set at spawn)
-wFireCool::     db
-wBallPActive::  db
 wBallPX:        dw
 wBallPY:        dw
 wBallPVX:       db              ; signed 1/16 px/frame
 wBallPVY:       db
 wBallPLife:     db
-wBallEActive::  db
 wBallEX:        dw
 wBallEY:        dw
 wBallEVX:       db
 wBallEVY:       db
 wBallELife:     db
-wStormT::       dw              ; storm frames remaining
-wStormDX::      db
-wStormDY::      db
-wStormDmgT::    db
+wEnemyTX:       dw              ; land-check cache: last approved target tile
+wEnemyTY:       dw              ; ($FFFF = invalid; set at spawn)
 wEvX:           db              ; enemy move temps
 wEvY:           db
 wEvC:           db              ; enemy chebyshev range (fire control)
@@ -39,11 +34,6 @@ wLoDY:          dw
 wLoI:           db              ; LOS sampling: sample index
 wLosT:          db              ; frames until next LOS check
 wNoLOS:         db              ; consecutive failed LOS checks
-; --- combat juice: these four timers MUST stay contiguous (fx tick loop) ---
-wEnemyFlash::   db              ; enemy hit-flash frames (blink)
-wSinkT::        db              ; sinking-animation frames
-wSplashT::      db              ; ball splash frames
-wSmokeT::       db              ; muzzle-smoke frames
 wSinkX:         dw              ; world px of the sinking ship
 wSinkY:         dw
 wSplashX:       dw              ; world px of the splash
@@ -52,14 +42,32 @@ wSmokeX:        dw              ; world px of the smoke puff
 wSmokeY:        dw
 wFxX:           dw              ; render scratch (sink slide offset)
 wFxY:           dw
-wMerchActive::  db
 wMerchX:        dw              ; 12.4 fixed point
 wMerchY:        dw
-wMerchT::       dw              ; despawn timer
-wMerchHailed::  db              ; 1 = the offer was already made
-wEscortPend::   db              ; 1 = a robbed merchant's escort still seeks water
 
 SECTION "Combat", ROMX, BANK[3]
+
+; Sailing music follows the hazards: battle while an enemy or storm is
+; active, calm otherwise. Called from the spawn/start/despawn/sink/expire
+; transitions instead of once per frame. clobbers a, b, d, e, h, l
+UpdateSailMusic::
+    ld a, [wEnemyActive]
+    and a
+    jr nz, .battle
+    ld a, [wStormT]
+    ld b, a
+    ld a, [wStormT+1]
+    or b
+    jr nz, .battle
+    ld a, SONG_SAIL
+    jr .set
+.battle
+    ld a, SONG_BATTLE
+.set
+    ld hl, wSongID
+    cp [hl]
+    call nz, SetSong
+    ret
 
 ; ---------------------------------------------------------------------------
 ; Encounter rolls (called when a cell is newly explored)
@@ -94,36 +102,39 @@ SpawnCheck::
     xor l
     ld l, a
     ld a, h
-    xor $C3                      ; encounter salt
+    xor HIGH(ENC_SALT)             ; encounter salt
     ld h, a
     ld a, l
-    xor $7A
+    xor LOW(ENC_SALT)
     ld l, a
     call Mix16
     push hl
     ld a, l
-    cp 48                          ; pirate ~19%
+    cp ENC_PIRATE_NEW              ; pirate ~19%
     call c, SpawnEnemy
     pop hl
     push hl
     ld a, l
-    sub 48                         ; merchant lane 48..67 (~8%)
-    cp 20
+    sub ENC_PIRATE_NEW             ; merchant lane 48..67 (~8%)
+    cp ENC_MERCH_NEW
     call c, SpawnMerchant
     pop hl
+    push hl                        ; StartStorm clobbers hl (Rand16 inside)
     ld a, h
-    cp 13                          ; storm ~5%
+    cp ENC_STORM_NEW               ; storm ~5%
     call c, StartStorm
+    pop hl
     ld a, h
-    sub 13                         ; kraken lane 13..14 (~0.8%, deep water only)
-    cp 2
+    sub ENC_STORM_NEW              ; kraken lane 13..14 (~0.8%, deep water only)
+    cp ENC_KRAKEN_W
     call c, SpawnKrakenIfDeep
     ret
 
 ; Re-entry roll for an already-charted cell: reduced odds (~1/4 of the
-; new-cell rates), drawn from the stateful RNG — the cell hash is constant
-; per cell, so hash-based re-rolls would be deterministic (a cell that
-; either always or never spawns).
+; new-cell rates for pirates, merchants, and storms; the kraken lane is
+; already so rare it is left unchanged), drawn from the stateful RNG — the
+; cell hash is constant per cell, so hash-based re-rolls would be
+; deterministic (a cell that either always or never spawns).
 RevisitRoll::
     ld a, [wEnemyActive]
     and a
@@ -141,31 +152,49 @@ RevisitRoll::
     ld a, [wWon]
     and a
     jr z, .calm
-    ld c, 48                         ; the Treasure's curse: a won sea stays
-    ld b, 13                         ; as wild as uncharted water
+    ld c, ENC_PIRATE_NEW             ; the Treasure's curse: a won sea stays
+    ld b, ENC_STORM_NEW              ; as wild as uncharted water
+    ld e, ENC_MERCH_NEW
     jr .roll
 .calm
-    ld c, 12                         ; pirate ~4.7%
-    ld b, 3                          ; storm ~1.2%
+    ld c, ENC_PIRATE_REV             ; pirate ~4.7%
+    ld b, ENC_STORM_REV              ; storm ~1.2%
+    ld e, ENC_MERCH_REV              ; merchant ~2%
 .roll
+    ; Rand16 clobbers d and e, and the spawn calls clobber b/c/e:
+    ; reload the lane widths around all of them
+    push bc
+    push de
     call Rand16
+    pop de
+    pop bc
+    push bc
+    push de
     push hl
     ld a, l
     cp c                           ; pirate
     call c, SpawnEnemy
     pop hl
+    pop de
+    pop bc
+    push bc
+    push de
     push hl
     ld a, l
     sub c
-    cp 20                          ; merchant lane: 20 values above the pirates'
+    cp e                           ; merchant lane above the pirates'
     call c, SpawnMerchant
     pop hl
+    pop de
+    pop bc
+    push hl
     ld a, h
     cp b                           ; storm
     call c, StartStorm
+    pop hl
     ld a, h
     sub b                          ; kraken lane: 2 values above the storm lane
-    cp 2
+    cp ENC_KRAKEN_W
     call c, SpawnKrakenIfDeep
     ret
 
@@ -292,6 +321,11 @@ SpawnEnemy::
     ld [wNoLOS], a
     ld a, 16
     ld [wLosT], a
+    ld a, $FF                      ; invalidate the land-check tile cache
+    ld [wEnemyTX], a
+    ld [wEnemyTX+1], a
+    ld [wEnemyTY], a
+    ld [wEnemyTY+1], a
     ld b, d
     ld c, e
     ld de, wEnemyX
@@ -299,7 +333,7 @@ SpawnEnemy::
     ; the seas grow bolder as the chart assembles: +1 HP at 3 and 6
     ; fragments, volleys 5 frames quicker per fragment. Guardians get
     ; their own stats: SpawnGuardian overrides both right after this.
-    call CountFrags                ; a = fragments (0..9); clobbers c, d, h, l
+    ld a, [wFragCount]             ; cached by SetFrag (0..9)
     ld b, a
     ld a, PIRATE_HP
     ld c, a
@@ -327,6 +361,7 @@ SpawnEnemy::
     and 31
     add 15                         ; pirate plunder: 15..46
     ld [wEnemyLoot], a
+    call UpdateSailMusic           ; a hazard just took the seas
     ret
 
 ; The kraken rises only in deep water (TILE_DEEP under the ship): tougher
@@ -376,9 +411,9 @@ SpawnMerchant::
     ld [wMerchActive], a
     xor a
     ld [wMerchHailed], a
-    ld a, LOW(900)
+    ld a, LOW(MERCH_TIME)
     ld [wMerchT], a
-    ld a, HIGH(900)
+    ld a, HIGH(MERCH_TIME)
     ld [wMerchT+1], a
     ld b, d
     ld c, e
@@ -476,13 +511,13 @@ UpdateMerchant:
     or l
     jr z, .gone
     call MerchRange
-    cp 141
+    cp MERCH_GONE_RANGE
     jr nc, .gone                   ; left behind
     ld a, [wMerchHailed]
     and a
     ret nz                         ; he made his offer already
     call MerchRange
-    cp 20
+    cp MERCH_HAIL_RANGE
     ret nc
     ld a, 1
     ld [wMerchHailed], a
@@ -517,6 +552,7 @@ StartStorm:
     ld [wStormDmgT], a
     ld a, SFX_STORM
     call PlaySfx
+    call UpdateSailMusic
     ret
 
 StormTick::
@@ -531,6 +567,8 @@ StormTick::
     ld [wStormT], a
     ld a, h
     ld [wStormT+1], a
+    or l
+    call z, UpdateSailMusic        ; the storm just spent itself
     ld a, [wStormDX]
     ld hl, wPosX
     call AddSignedToPos
@@ -543,7 +581,7 @@ StormTick::
     ret nz
     ld a, 120
     ld [wStormDmgT], a
-    ld a, [wJoyHeld]
+    ldh a, [hJoyHeld]
     and DIR_MASK
     ret nz                         ; actively steering: no damage
     ld a, [wDmgCool]
@@ -902,14 +940,14 @@ UpdateEnemy:
 .losDone
     ; dx/dy as signed bytes (clamped)
     call EnemyDelta                ; b = dx, c = dy
-    ; despawn if |dx| or |dy| > 120 (they were clamped at 127: check raw-ish)
+    ; despawn if |dx| or |dy| too big (they were clamped at 127: check raw-ish)
     ld a, b
     call AbsA
-    cp 121
+    cp ENEMY_GIVE_UP
     jp nc, .despawn
     ld a, c
     call AbsA
-    cp 121
+    cp ENEMY_GIVE_UP
     jp nc, .despawn
     ; chebyshev = max(|dx|, |dy|)
     ld a, b
@@ -958,7 +996,7 @@ UpdateEnemy:
 .vySet
     ld d, a                        ; vy
     ld a, [wEvX]                   ; cheb
-    cp 41
+    cp ENEMY_HOLD_RANGE + 1
     jr c, .hold
     ld a, e
     ld [wEvX], a                   ; vx
@@ -989,13 +1027,38 @@ UpdateEnemy:
     SR16 h, l, 7
     ld e, l
     ld d, h                        ; target ty
+    ; skip WorldTile when the target is the last approved (water) tile —
+    ; the world is static, so a cached tile is still sailable
+    ld a, [wEnemyTX]
+    cp c
+    jr nz, .lookup
+    ld a, [wEnemyTX+1]
+    cp b
+    jr nz, .lookup
+    ld a, [wEnemyTY]
+    cp e
+    jr nz, .lookup
+    ld a, [wEnemyTY+1]
+    cp d
+    jr z, .integrate
+.lookup
     push bc
     push de
     call WorldTile
     pop de
     pop bc
     cp TILE_SAND
-    jr nc, .noMove                 ; land: hold position
+    jr nc, .noMove                 ; land: hold position (cache untouched,
+                                   ; so the next frame re-checks)
+    ld a, c                        ; approve: cache the water tile
+    ld [wEnemyTX], a
+    ld a, b
+    ld [wEnemyTX+1], a
+    ld a, e
+    ld [wEnemyTY], a
+    ld a, d
+    ld [wEnemyTY+1], a
+.integrate
     ; integrate
     ld a, [wEnemyX]
     ld l, a
@@ -1027,7 +1090,7 @@ UpdateEnemy:
     ret
 .ready
     ld a, [wEvC]                   ; true range, not the velocity byte
-    cp 90
+    cp ENEMY_FIRE_RANGE
     ret nc                         ; too far to fire
     ld a, [wEnemyFireRate]
     ld [wEnemyFireCool], a
@@ -1038,6 +1101,7 @@ UpdateEnemy:
     ld [wEnemyActive], a
     ld [wBallEActive], a
     ld [wShadowOAM + 4], a
+    call UpdateSailMusic           ; seas calm again (unless a storm blows)
     ; a despawned final-battle guardian must not consume its wave (e.g.
     ; the player wrecked and respawned far away): hand it back so
     ; CellWatch spawns it again — otherwise the finale can never be won.
@@ -1047,7 +1111,7 @@ UpdateEnemy:
     ld a, [wFinal]
     and a
     ret z
-    cp 6
+    cp FINAL_DONE
     ret z
     dec a
     ld [wFinal], a
@@ -1109,6 +1173,7 @@ UpdateBalls:
     ; sink!
     xor a
     ld [wEnemyActive], a
+    call UpdateSailMusic           ; back to calm unless a storm still blows
     ; run the sinking animation from her last position
     ld a, 24
     ld [wSinkT], a
@@ -1136,12 +1201,7 @@ UpdateBalls:
     call PlaySfx
     ld a, [wEnemyLoot]
     ld b, a
-    ld a, [wGold]
-    add b
-    ld [wGold], a
-    ld a, [wGold+1]
-    adc 0
-    ld [wGold+1], a
+    call AddGold
     ; guardian bookkeeping
     ld a, [wIsGuardian]
     and a
@@ -1149,7 +1209,7 @@ UpdateBalls:
     ld a, [wFinal]
     and a
     jr z, .normalSink
-    cp 5
+    cp FINAL_ALL_SPAWNED
     jp z, .victorySink
     jp .enemyBall                  ; mid-final-battle: next wave via CellWatch
 .normalSink

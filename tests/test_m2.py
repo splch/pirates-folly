@@ -7,8 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 ROM = str(ROOT / "pirates_folly.gb")
 SYM = str(ROOT / "build" / "pirates_folly.sym")
 
+# Boot a temp copy: PyBoy loads <rom>.ram next to the ROM and writes it on
+# stop(), so sharing the repo ROM path leaks saves between test files.
+import shutil, tempfile
+RUN = str(Path(tempfile.mkdtemp()) / "pf.gb")
+shutil.copy(ROM, RUN)
+
 def load():
-    pb = PyBoy(ROM, window="null")
+    pb = PyBoy(RUN, window="null")
     pb.set_emulation_speed(0)
     syms = {}
     for line in open(SYM):
