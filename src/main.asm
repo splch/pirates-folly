@@ -101,6 +101,8 @@ EntryPoint:
     ld [wEscortPend], a
     ld [wMuted], a
     ld [wPriceDrift], a
+    ld a, PIRATE_FIRECOOL          ; sane default for hand-placed enemies
+    ld [wEnemyFireRate], a
     ld a, $FF                    ; MarkExplored tile cache: invalid
     ld [wMarkTX], a
     ld [wMarkTX+1], a
@@ -580,6 +582,11 @@ InitNewGame:
     ld [wGold+1], a
     ld a, HULL_MAX
     ld [wHull], a
+    ld [wHullMax], a               ; fresh ship: no shipyard upgrades
+    ld a, SAIL_MAX_VEL
+    ld [wMaxVel], a
+    ld a, 40
+    ld [wBallLife], a
     ld a, 5
     ld [wCrew], a
     xor a
@@ -623,6 +630,8 @@ InitNewGame:
     ld [hli], a
     dec b
     jr nz, .clr
+    ld a, PIRATE_FIRECOOL          ; sane default for hand-placed enemies
+    ld [wEnemyFireRate], a         ; (AFTER .clr: the loop stores a)
     ld a, 1
     ld [wNeedSpawn], a           ; pick a fresh spawn
     call ComputeIsles

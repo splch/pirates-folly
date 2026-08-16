@@ -309,6 +309,7 @@ SpawnGuardian:
     ld [wEnemyHP], a
     ld a, GUARD_FIRECOOL
     ld [wEnemyFireCool], a
+    ld [wEnemyFireRate], a
     jr .mark
 .finalWave
     ; the final fleet escalates per wave k (= wFinal): HP 5+k, cooldown 50-8k
@@ -323,6 +324,7 @@ SpawnGuardian:
     ld a, GUARD_FIRECOOL
     sub b
     ld [wEnemyFireCool], a
+    ld [wEnemyFireRate], a
 .mark
     ld a, 1
     ld [wIsGuardian], a

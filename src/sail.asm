@@ -571,16 +571,29 @@ SailPhysics:
 .doneY
     ret
 
-; Clamp a to [-SAIL_MAX_VEL, +SAIL_MAX_VEL] (signed via $80 bias).
+; Clamp a to [-wMaxVel, +wMaxVel] (signed via $80 bias). The swift-sails
+; shipyard upgrade raises wMaxVel from 40 to 48.
 ClampVel:
     add $80
-    cp $80 + SAIL_MAX_VEL
+    ld c, a                      ; biased velocity
+    ld a, [wMaxVel]
+    add $80                      ; $80 + max
+    ld b, a
+    ld a, c
+    cp b
     jr c, .lo
-    ld a, $80 + SAIL_MAX_VEL
+    ld a, b
 .lo
-    cp $80 - SAIL_MAX_VEL
+    ld c, a
+    ld a, [wMaxVel]
+    cpl
+    inc a                        ; -max
+    add $80                      ; $80 - max
+    ld b, a
+    ld a, c
+    cp b
     jr nc, .ok
-    ld a, $80 - SAIL_MAX_VEL
+    ld a, b
 .ok
     sub $80
     ret
@@ -588,8 +601,10 @@ ClampVel:
 ; Drag: a -= sign(a) * |a|/32 (truncate toward zero; sra would floor, and
 ; floor(v/32) = -1 for every v in [-32,-1], exactly canceling 1/frame
 ; thrust — that pinned negative velocity at 0 and made west/north
-; unsailable). With no thrust, nudges by 1 so ships fully stop; while
-; thrusting there is no low-speed drag (else thrust never wins).
+; unsailable). Swift sails halve the drag (|a|/64): the sustained top
+; speed is thrust x divisor, so 32 stock and the 48 clamp when fitted.
+; With no thrust, nudges by 1 so ships fully stop; while thrusting there
+; is no low-speed drag (else thrust never wins).
 ; in: a = velocity, b = thrust flag (nonzero = thrusting); out: a = new velocity
 Drag:
     and a
@@ -600,9 +615,20 @@ Drag:
     cpl
     inc a
 .mag                             ; a = |vel|
+    ld e, a
+    ld a, [wMaxVel]
+    cp 48                          ; swift sails fitted?
+    ld a, e
+    jr nz, .stdDrag
+    REPT 6
+    srl a
+    ENDR                           ; a = |vel| / 64
+    jr .dragSet
+.stdDrag
     REPT 5
     srl a
     ENDR                           ; a = |vel| / 32
+.dragSet
     jr nz, .haveMag
     ld a, b
     and a

@@ -10,6 +10,7 @@ wEnemyX:        dw              ; 12.4 fixed point
 wEnemyY:        dw
 wEnemyHP::      db
 wEnemyFireCool:: db
+wEnemyFireRate:: db             ; per-enemy refire rate (scaled at spawn)
 wFireCool::     db
 wBallPActive::  db
 wBallPX:        dw
@@ -132,20 +133,30 @@ RevisitRoll::
     call IsIsleCell
     cp $FF
     ret nz                       ; isle waters are guardian territory: no rolls
+    ld a, [wWon]
+    and a
+    jr z, .calm
+    ld c, 48                         ; the Treasure's curse: a won sea stays
+    ld b, 13                         ; as wild as uncharted water
+    jr .roll
+.calm
+    ld c, 12                         ; pirate ~4.7%
+    ld b, 3                          ; storm ~1.2%
+.roll
     call Rand16
     push hl
     ld a, l
-    cp 12                          ; pirate ~4.7%
+    cp c                           ; pirate
     call c, SpawnEnemy
     pop hl
     push hl
     ld a, l
-    sub 12                         ; merchant lane 12..31 (~7.8%)
-    cp 20
+    sub c
+    cp 20                          ; merchant lane: 20 values above the pirates'
     call c, SpawnMerchant
     pop hl
     ld a, h
-    cp 3                           ; storm ~1.2%
+    cp b                           ; storm
     call c, StartStorm
     ret
 
@@ -321,6 +332,7 @@ SpawnEnemy::
     ld a, PIRATE_FIRECOOL
     sub b                          ; >= 30 even at 9 fragments
     ld [wEnemyFireCool], a
+    ld [wEnemyFireRate], a
     ret
 
 ; A merchant sail on the ring: becalmed, hails once, leaves after ~15 s.
@@ -740,7 +752,7 @@ FireCannon::
     ld [wBallPY], a
     ld a, [wPosY+1]
     ld [wBallPY+1], a
-    ld a, 40
+    ld a, [wBallLife]                ; long guns upgrade: 40 -> 56 frames
     ld [wBallPLife], a
     ; muzzle smoke at the ship's bow
     ld a, [wShipX]
@@ -997,7 +1009,7 @@ UpdateEnemy:
     ld a, [wEvC]                   ; true range, not the velocity byte
     cp 90
     ret nc                         ; too far to fire
-    ld a, PIRATE_FIRECOOL
+    ld a, [wEnemyFireRate]
     ld [wEnemyFireCool], a
     call EnemyFire
     ret

@@ -28,6 +28,9 @@ wHasSave::  db
 wNeedSpawn:: db
 wBestGold:: dw          ; largest gold haul ever held (persists across voyages)
 wCartDone:: db          ; chart-completion bounty awarded this voyage
+wHullMax:: db           ; shipyard upgrades: plating 20/25/30
+wMaxVel::  db           ; swift sails: 40 -> 48
+wBallLife:: db          ; long guns: 40 -> 56 frames of range
 wNpR:       db          ; nearest-port scan state
 wNpX:       db
 wNpY:       db
@@ -513,7 +516,7 @@ RenderPort:
     call PrintDec2
     ld a, TILE_SLASH
     ld [$9800 + 4 * 32 + 10], a
-    ld a, HULL_MAX
+    ld a, [wHullMax]
     ld de, $9800 + 4 * 32 + 11
     call PrintDec2
     ld hl, StrCrew
@@ -528,6 +531,8 @@ RenderPort:
     jr z, .main
     cp PTRADE
     jp z, RenderTrade
+    cp PSHIPYARD
+    jp z, RenderShipyard
     cp PTAVERN
     jp z, RenderTavern
     cp PREPAIR
@@ -556,11 +561,14 @@ RenderPort:
     ld hl, StrRecruit
     ld de, $9800 + 9 * 32 + 5
     call PrintStr
-    ld hl, StrSave
+    ld hl, StrShipyard
     ld de, $9800 + 10 * 32 + 5
     call PrintStr
-    ld hl, StrSetSail
+    ld hl, StrSave
     ld de, $9800 + 11 * 32 + 5
+    call PrintStr
+    ld hl, StrSetSail
+    ld de, $9800 + 12 * 32 + 5
     call PrintStr
     call DrawCursor
     ret
@@ -958,6 +966,8 @@ UpdatePort::
     jr z, MainInput
     cp PTRADE
     jp z, TradeInput
+    cp PSHIPYARD
+    jp z, ShipyardInput
     ; all other sub-states: B returns to main, A acts (repair/recruit)
     ld a, [wJoyNew]
     and PADF_B
@@ -1005,9 +1015,9 @@ MainInput:
     ld a, [wPortMenu]
     dec a
     and 7
-    cp 6
+    cp 7
     jr c, .ok1
-    ld a, 5                        ; wrap: item 0 -> bottom item
+    ld a, 6                        ; wrap: item 0 -> bottom item
 .ok1
     ld [wPortMenu], a
     jr .moved
@@ -1017,7 +1027,7 @@ MainInput:
     jr z, .notDown
     ld a, [wPortMenu]
     inc a
-    cp 6
+    cp 7
     jr c, .ok2
     xor a
 .ok2
@@ -1040,6 +1050,8 @@ MainInput:
     dec a
     jr z, .recruit
     dec a
+    jr z, .shipyard
+    dec a
     jr z, .save
     ; SET SAIL
     call SaveGame
@@ -1059,6 +1071,9 @@ MainInput:
 .recruit
     ld a, PRECRUIT
     jr .enter
+.shipyard
+    ld a, PSHIPYARD
+    jr .enter
 .save
     call SaveGame
     ld a, PSAVED
@@ -1075,8 +1090,10 @@ MainInput:
 RepairAction:
     ; repair all affordable: while hull < max && gold >= cost
 .loop
+    ld a, [wHullMax]
+    ld b, a
     ld a, [wHull]
-    cp HULL_MAX
+    cp b
     ret nc
     ld a, [wGold]
     ld l, a
@@ -1120,6 +1137,198 @@ RecruitAction:
     ld a, [wCrew]
     inc a
     ld [wCrew], a
+    ret
+
+; ---------------------------------------------------------------------------
+; Shipyard: three upgrades, one screen. PLATING (+5 hull, two tiers),
+; SAILS (40 -> 48 velocity cap), LONG GUNS (40 -> 56 ball range).
+; ---------------------------------------------------------------------------
+
+PUSHS "Shipyard tables", ROMX, BANK[3]
+UPG_NAMES: dw StrPlating, StrSails, StrGuns
+UPG_COSTS: db 100, 250, 0            ; plating: two tiers, then maxed
+           db 200, 0, 0              ; sails
+           db 200, 0, 0              ; long guns
+POPS
+
+; in: a = upgrade index 0..2; out: a = cost (0 = maxed). clobbers b, c, d, e, h, l
+UpgCost:
+    ld b, a                          ; index
+    and a
+    jr z, .plating
+    dec a
+    jr z, .sails
+    ld a, [wBallLife]
+    cp 56
+    jr z, .lvl1
+    xor a
+    jr .lookup
+.sails
+    ld a, [wMaxVel]
+    cp 48
+    jr z, .lvl1
+    xor a
+    jr .lookup
+.lvl1
+    ld a, 1
+    jr .lookup
+.plating
+    ld a, [wHullMax]
+    sub 20
+    ld c, 0
+.pl
+    cp 5
+    jr c, .plDone
+    sub 5
+    inc c
+    jr .pl
+.plDone
+    ld a, c                          ; level 0..2
+.lookup
+    ld c, a                          ; level
+    ld a, b
+    add a
+    add b                            ; index * 3
+    add c
+    ld hl, UPG_COSTS
+    ld e, a
+    ld d, 0
+    add hl, de
+    ld a, [hl]
+    ret
+
+RenderShipyard:
+    ld hl, StrShipyard
+    ld de, $9800 + 5 * 32 + 3
+    call PrintStr
+    xor a
+    ld [wPortK], a                   ; upgrade index
+.row
+    ld a, [wPortK]
+    add 6
+    call MapRowAddr
+    ld bc, 5
+    add hl, bc
+    push hl
+    pop de
+    ld a, [wPortK]
+    ld hl, UPG_NAMES
+    add a
+    ld c, a
+    ld b, 0
+    add hl, bc
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    call PrintStr
+    ld a, [wPortK]
+    add 6
+    call MapRowAddr
+    ld bc, 15
+    add hl, bc
+    push hl
+    pop de
+    ld a, [wPortK]
+    call UpgCost
+    and a
+    jr z, .maxed
+    call PrintDec3
+    ld a, TILE_A + 6                 ; 'G'
+    ld [de], a
+    jr .next
+.maxed
+    ld hl, StrMaxed
+    call PrintStr
+.next
+    ld a, [wPortK]
+    inc a
+    ld [wPortK], a
+    cp 3
+    jr nz, .row
+    ld hl, StrUpgHelp
+    ld de, $9800 + 11 * 32 + 2
+    call PrintStr
+    call DrawCursor
+    ret
+
+ShipyardBuy:
+    ld a, [wPortMenu]
+    call UpgCost
+    and a
+    ret z                            ; maxed
+    ld b, a                          ; cost (<= 250: check the high byte too)
+    ld a, [wGold]
+    cp b
+    ld a, [wGold+1]
+    sbc 0
+    ret c                            ; can't afford
+    ld a, [wGold]
+    sub b
+    ld [wGold], a
+    ld a, [wGold+1]
+    sbc 0
+    ld [wGold+1], a
+    ld a, [wPortMenu]
+    and a
+    jr z, .plate
+    dec a
+    jr z, .sails
+    ld a, 56
+    ld [wBallLife], a                ; long guns
+    jr .done
+.plate
+    ld a, [wHullMax]
+    add 5
+    ld [wHullMax], a
+    ld a, [wHull]                    ; new plating comes fitted
+    add 5
+    ld [wHull], a
+    jr .done
+.sails
+    ld a, 48
+    ld [wMaxVel], a
+.done
+    ld a, SFX_COIN
+    call PlaySfx
+    ret
+
+ShipyardInput:
+    ld a, [wJoyNew]
+    and PADF_B
+    jr z, .notB
+    xor a
+    ld [wPortState], a               ; back to PMAIN
+    ld [wPortMenu], a
+    jp .redraw
+.notB
+    ld a, [wJoyNew]
+    and PADF_UP
+    jr z, .notUp
+    ld a, [wPortMenu]
+    dec a
+    and 3
+    ld [wPortMenu], a
+    jr .redraw
+.notUp
+    ld a, [wJoyNew]
+    and PADF_DOWN
+    jr z, .notDown
+    ld a, [wPortMenu]
+    inc a
+    cp 3
+    jr c, .ok
+    xor a
+.ok
+    ld [wPortMenu], a
+    jr .redraw
+.notDown
+    ld a, [wJoyNew]
+    and PADF_A
+    ret z
+    call ShipyardBuy
+.redraw
+    ld a, 1
+    ld [wPortDirty], a
     ret
 
 ; ---------------------------------------------------------------------------
@@ -1469,7 +1678,7 @@ PrintPortName:
 
 DEF SAVE_MAGIC_0 EQU $53
 DEF SAVE_MAGIC_1 EQU $46
-DEF SAVE_VERSION EQU 4          ; v4: + wBestGold, wCartDone. v3 saves rejected.
+DEF SAVE_VERSION EQU 5          ; v5: + wHullMax/wMaxVel/wBallLife. v4 rejected.
 
 ; Copy b bytes from de to hl, advancing both. clobbers a, b, de, hl
 CopyToSRAM:
@@ -1511,9 +1720,9 @@ SaveGame::
     ld [hli], a
     xor a
     ld [hli], a                    ; checksum placeholder
-    ; data layout ($A004..$A05E): seed(4) pos(4) gold+hull+crew+cargo(8)
+    ; data layout ($A004..$A061): seed(4) pos(4) gold+hull+crew+cargo(8)
     ; explored(32) lastport(2) fragmask+guardmask(4) final+won(2)
-    ; portcells(32) bestgold(2) cartdone(1)
+    ; portcells(32) bestgold(2) cartdone(1) upgrades(3)
     ld de, wSeed
     ld b, 4
     call CopyToSRAM
@@ -1544,9 +1753,12 @@ SaveGame::
     ld de, wCartDone
     ld b, 1
     call CopyToSRAM
-    ; checksum = sum of $A004..$A05E
+    ld de, wHullMax               ; 3 contiguous upgrade bytes
+    ld b, 3
+    call CopyToSRAM
+    ; checksum = sum of $A004..$A061
     ld hl, $A004
-    ld c, 91
+    ld c, 94
     xor a
 .sum
     add a, [hl]
@@ -1585,7 +1797,7 @@ LoadGame::
     jp nz, .fail
     ; checksum
     ld hl, $A004
-    ld c, 91
+    ld c, 94
     xor a
 .sum
     add a, [hl]
@@ -1627,6 +1839,9 @@ LoadGame::
     ld de, wCartDone
     ld b, 1
     call CopyFromSRAM
+    ld de, wHullMax
+    ld b, 3
+    call CopyFromSRAM
     call FoldSeed16                ; wSeed16 first: ComputeIsles hashes with it
     call ComputeIsles              ; isles are derived, never saved
     xor a
@@ -1657,6 +1872,12 @@ StrTavern:  db "TAVERN", 0
 StrRecruit: db "RECRUIT", 0
 StrSave:    db "SAVE", 0
 StrSetSail: db "SET SAIL", 0
+StrShipyard: db "SHIPYARD", 0
+StrPlating: db "PLATING", 0
+StrSails:   db "SAILS", 0
+StrGuns:    db "LONG GUNS", 0
+StrMaxed:   db "MAXED", 0
+StrUpgHelp: db "A BUY  B BACK", 0
 StrSaved:   db "GAME SAVED", 0
 StrAnyKey:  db "PRESS B TO RETURN", 0
 StrTradeHd: db "GOODS   PRICE OWN", 0
