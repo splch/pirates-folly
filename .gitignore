@@ -11,3 +11,6 @@ build/
 
 # Python test artifacts
 __pycache__/
+
+# Agent session logs
+.abc/

@@ -1,5 +1,11 @@
 # Pirate's Folly — Audit Report
 
+> **RESOLVED — kept for history.** Every item below was applied (see the
+> commit log: `f70cec7` docs fixes, `6bdd7c9` dead-code removal, and the
+> Makefile `text.inc` prereq). The later gameplay audits — dead crew stat,
+> two-wave finale, quiet charted seas, invisible seed, no gold sink —
+> shipped in the P0/P1/P2 and high/medium passes (`git log --oneline`).
+
 *Cross-validated against source: `defs.inc`, `main.asm`, `sail.asm`, `world.asm`,
 `port.asm`, `combat.asm`, `isles.asm`, `sgb.asm`, `*.inc`, `Makefile`,
 `README.md`, `docs/PIRATE_GAME_PLAN.md`, and the built ROM (`pirates_folly.gb`).*
