@@ -231,13 +231,15 @@ StartStorm:
     ld [wStormT], a
     ld a, h
     ld [wStormT+1], a
+    ; drift -32..31 (1/16 px/frame): strong enough to ride as a fast but
+    ; dangerous current — risk/reward, not pure punishment
     call Rand16
-    and $1F
-    sub 16
+    and $3F
+    sub 32
     ld [wStormDX], a
     call Rand16
-    and $1F
-    sub 16
+    and $3F
+    sub 32
     ld [wStormDY], a
     ld a, 60
     ld [wStormDmgT], a
