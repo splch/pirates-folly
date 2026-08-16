@@ -24,8 +24,11 @@ def set16(n, v):
     mem[syms[n] + 1] = v >> 8
 
 def press(btn, wait=30):
+    # hold for 3 ticks: a 1-tick press can land between the game's joypad
+    # reads (PyBoy writes hit mid-frame) and vanish
     pb.button_press(btn)
-    pb.tick()
+    for _ in range(3):
+        pb.tick()
     pb.button_release(btn)
     for _ in range(wait):
         pb.tick()

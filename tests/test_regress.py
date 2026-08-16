@@ -597,8 +597,8 @@ def r11_r12_menu_and_gold():
     s16 = seed16(mem)
     dock_at_district(pb, s16, *find_dockable_port(s16))
     press(pb, "up", 5)
-    assert mem[syms["wPortMenu"]] == 5, \
-        f"UP from top item -> {mem[syms['wPortMenu']]}, want 5"
+    assert mem[syms["wPortMenu"]] == 6, \
+        f"UP from top item -> {mem[syms['wPortMenu']]}, want 6 (SET SAIL)"
     set16(mem, "wGold", 30000)
     mem[syms["wPortDirty"]] = 1
     for _ in range(30):
@@ -1096,7 +1096,7 @@ def _set_rng(mem, s):
     mem[syms["wRngState"]] = s >> 8
     mem[syms["wRngState"] + 1] = s & 0xFF
 
-def _sail_into_marked_cell(rng_state, frags=0):
+def _sail_into_marked_cell(rng_state, frags=0, won=0):
     """Spawn cell (cx,cy) is charted by the new-game ticks; pre-chart the
     cell to its east and sail in. Returns (pb, mem) stopped at the crossing."""
     pb = boot()
@@ -1105,6 +1105,7 @@ def _sail_into_marked_cell(rng_state, frags=0):
     mem[syms["wEnemyActive"]] = 0        # clear the spawn cell's own roll
     set16(mem, "wStormT", 0)
     set16(mem, "wFragMask", frags)
+    mem[syms["wWon"]] = won
     cx, cy = mem[syms["wShipCX"]], mem[syms["wShipCY"]]
     isles = {(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
              for k in range(9)}
@@ -1397,6 +1398,101 @@ def r33_select_mute_and_reroll():
     pb.stop()
     print("R33 SELECT mute + seed re-roll: OK")
 
+# ----------------- R34: shipyard upgrades (buy, effect, persist)
+
+def r34_shipyard():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    dock_at_district(pb, s16, *find_dockable_port(s16))
+    set16(mem, "wGold", 1000)
+    for _ in range(4):
+        press3(pb, "down")               # TRADE,REPAIR,TAVERN,RECRUIT -> SHIPYARD
+        for _ in range(3):
+            pb.tick()
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wPortState"]] == 6, "shipyard didn't open"
+    hull0 = mem[syms["wHull"]]            # may have taken a bump while docking
+    press3(pb, "a")                       # plating tier 1
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wHullMax"]] == 25 and mem[syms["wHull"]] == hull0 + 5, \
+        f"plating: max {mem[syms['wHullMax']]} hull {mem[syms['wHull']]}"
+    assert w16(mem, "wGold") == 900, f"gold {w16(mem, 'wGold')}, want 900"
+    press3(pb, "a")                       # plating tier 2
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wHullMax"]] == 30 and w16(mem, "wGold") == 650
+    press3(pb, "a")                       # maxed: no sale
+    for _ in range(10):
+        pb.tick()
+    assert w16(mem, "wGold") == 650, "charged for a maxed upgrade"
+    press3(pb, "down")                    # SAILS
+    for _ in range(3):
+        pb.tick()
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wMaxVel"]] == 48 and w16(mem, "wGold") == 450
+    press3(pb, "down")                    # LONG GUNS
+    for _ in range(3):
+        pb.tick()
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wBallLife"]] == 56 and w16(mem, "wGold") == 250
+    press3(pb, "b")                       # back to main menu
+    for _ in range(10):
+        pb.tick()
+    press3(pb, "b")                       # set sail (autosaves the upgrades)
+    assert wait_state(pb, 2), "never set sail"
+    # sails: velocity cap is 48 now — a 22-tile runway and per-frame sampling
+    # (a 90-frame hold outruns any small patch of guaranteed water)
+    spot = find_water(s16, 40, 90, 130, 160,
+                      lambda x, y: all(tile(x + k, y, s16) < 3
+                                       for k in range(-2, 23)))
+    assert spot, "no long water runway"
+    assert teleport(pb, *spot)
+    vmax = 0
+    pb.button_press("right")
+    for _ in range(70):
+        pb.tick()
+        v = mem[syms["wVelX"]]
+        if v < 128:
+            vmax = max(vmax, v)
+    pb.button_release("right")
+    assert vmax == 48, f"top speed {vmax}, want 48"
+    # long guns: ball lives 56 frames (minus the same-frame tick)
+    press3(pb, "a")
+    assert mem[syms["wBallPActive"]] == 1, "cannon didn't fire"
+    assert mem[syms["wBallPLife"]] in (55, 56), \
+        f"ball life {mem[syms['wBallPLife']]}, want ~56"
+    # upgrades persist through the save
+    press3(pb, "b")                       # quit confirm
+    for _ in range(5):
+        pb.tick()
+    press3(pb, "b")
+    assert wait_state(pb, 0), "did not return to the editor"
+    press3(pb, "start")                   # continue the saved voyage
+    assert wait_state(pb, 2), "continue failed"
+    assert mem[syms["wHullMax"]] == 30 and mem[syms["wMaxVel"]] == 48 \
+        and mem[syms["wBallLife"]] == 56, "upgrades didn't persist"
+    pb.stop()
+    print("R34 shipyard upgrades (buy, effect, persist): OK")
+
+# ----------------- R35: a won sea stays wild
+
+def r35_revenge_seas():
+    # _NO_ROLL rolls l in [32,48): nothing pre-victory (R24), a pirate after
+    pb = _sail_into_marked_cell(_NO_ROLL, won=1)
+    assert pb.memory[syms["wEnemyActive"]] == 1, \
+        "won sea didn't keep charted waters dangerous"
+    pb.stop()
+    print("R35 revenge seas after victory: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1412,6 +1508,7 @@ if __name__ == "__main__":
                r29_merchant_trade, r30_merchant_rob_escort,
                r31_price_drift, r32_dig_ceremony,
                r33_select_mute_and_reroll,
+               r34_shipyard, r35_revenge_seas,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
