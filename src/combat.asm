@@ -1121,28 +1121,8 @@ UpdateBalls:
     ld [wBallPLife], a
     jp z, .killP
     ; land check
-    ld a, [wBallPX]
-    ld l, a
-    ld a, [wBallPX+1]
-    ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR                           ; ball tile x (12.4 -> tile = >>7)
-    ld c, l
-    ld b, h
-    ld a, [wBallPY]
-    ld l, a
-    ld a, [wBallPY+1]
-    ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR
-    ld e, l
-    ld d, h
-    call WorldTile
-    cp TILE_SAND
+    ld de, wBallPX
+    call BallHitLand
     jp nc, .killP
     ; hit enemy?
     ld a, [wEnemyActive]
@@ -1308,28 +1288,8 @@ UpdateBalls:
     ld [wBallELife], a
     jp z, .killE                 ; SFX code grew this branch past jr range
     ; land check, same as the player's ball: nobody shoots through land
-    ld a, [wBallEX]
-    ld l, a
-    ld a, [wBallEX+1]
-    ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR                           ; ball tile x (12.4 -> tile = >>7)
-    ld c, l
-    ld b, h
-    ld a, [wBallEY]
-    ld l, a
-    ld a, [wBallEY+1]
-    ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR
-    ld e, l
-    ld d, h
-    call WorldTile
-    cp TILE_SAND
+    ld de, wBallEX
+    call BallHitLand
     jp nc, .killE
     ; hit player? |ballPx - shipPx| < 6 both axes
     ld a, [wBallEX]
@@ -1696,6 +1656,36 @@ RenderCombat::
 .hide
     xor a
     ld [hl], a
+    ret
+
+; in: de = ptr to a ball's 12.4 X (Y at de+2); out: carry CLEAR iff the
+; ball's tile is land. clobbers a, b, c, d, e, h, l
+BallHitLand:
+    ld a, [de]
+    ld l, a
+    inc de
+    ld a, [de]
+    ld h, a
+    REPT 7
+    srl h
+    rr l
+    ENDR                           ; ball tile x (12.4 -> tile = >>7)
+    ld c, l
+    ld b, h
+    inc de
+    ld a, [de]
+    ld l, a
+    inc de
+    ld a, [de]
+    ld h, a
+    REPT 7
+    srl h
+    rr l
+    ENDR
+    ld e, l
+    ld d, h                        ; de = tile y
+    call WorldTile
+    cp TILE_SAND
     ret
 
 ; a = 1 iff the enemy has a clear tile line to the ship (samples the
