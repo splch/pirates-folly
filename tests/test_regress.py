@@ -1604,6 +1604,104 @@ def r38_second_save_slot():
     pb2.stop()
     print("R38 corrupt save slot falls back to the other: OK")
 
+# ----------------- R39: merchants despawn on range and on time
+
+def r39_merchant_despawn():
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    # range: leave her behind (no-storm destination: drift breaks the hop)
+    s16 = seed16(mem)
+    far = find_water(s16, 150, 250, 40, 120,
+                     lambda x, y: (mix16((((x // 20) * 73 + (y // 18) * 41)
+                                          & 0xFFFF) ^ s16 ^ 0xC37A) >> 8) >= 13)
+    assert far, "no calm far water found"
+    mem[syms["wVelX"]] = 0
+    mem[syms["wVelY"]] = 0
+    set16(mem, "wStormT", 0)
+    assert teleport(pb, *far)
+    for _ in range(10):
+        pb.tick()
+    assert not mem[syms["wMerchActive"]], "merchant never left behind"
+    # time: park one nearby with 30 frames on the clock
+    set16(mem, "wMerchX", (w16(mem, "wShipX") + 100) << 4)
+    set16(mem, "wMerchY", w16(mem, "wShipY") << 4)
+    mem[syms["wMerchHailed"]] = 1
+    set16(mem, "wMerchT", 30)
+    mem[syms["wMerchActive"]] = 1
+    for _ in range(40):
+        pb.tick()
+    assert not mem[syms["wMerchActive"]], "merchant never timed out"
+    pb.stop()
+    print("R39 merchant despawn (range + timer): OK")
+
+# ----------------- R40: robbing a merchant with no escort
+
+# rob outcome = the roll after the deal roll; even high byte = no escort
+_ROB_CLEAN = next(s for s in range(1, 0x10000)
+                  if not ((xs16(xs16(s)) >> 8) & 1))
+
+def r40_clean_rob():
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    _hail_merchant(pb, mem, rng=_ROB_CLEAN)
+    set16(mem, "wGold", 100)
+    press3(pb, "b")                      # rob the dog
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wMerchPhase"]] == 2, "no result screen"
+    g = w16(mem, "wGold")
+    assert 130 <= g <= 161, f"robbery paid {g - 100}"
+    assert read_text(mem, 0x9800 + 4 * 32, 16) == "NO QUARTER GIVEN"
+    press3(pb, "a")
+    assert wait_state(pb, 2), "never back to sailing"
+    for _ in range(120):
+        pb.tick()
+    assert not mem[syms["wEnemyActive"]], "clean robbery spawned an escort"
+    assert not mem[syms["wEscortPend"]], "phantom escort pending"
+    pb.stop()
+    print("R40 clean robbery (no escort branch): OK")
+
+# ----------------- R41: a merchant parley delays the guardian
+
+def r41_merchant_delays_guardian():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    ix, iy = mem[syms["wIsles"]], mem[syms["wIsles"] + 1]
+    spot = None
+    for ty in range(iy * 18, iy * 18 + 18):
+        for tx in range(ix * 20, ix * 20 + 20):
+            if tile(tx, ty, s16) < 3:
+                spot = (tx, ty)
+                break
+        if spot:
+            break
+    assert spot, "no water in isle 0's cell"
+    assert teleport(pb, *spot)
+    mem[syms["wEnemyActive"]] = 0        # the teleport tick's guardian
+    # park a merchant in range: parley active, hail already done
+    set16(mem, "wMerchX", (w16(mem, "wShipX") + 100) << 4)
+    set16(mem, "wMerchY", w16(mem, "wShipY") << 4)
+    mem[syms["wMerchHailed"]] = 1
+    set16(mem, "wMerchT", 500)
+    mem[syms["wMerchActive"]] = 1
+    for _ in range(120):
+        pb.tick()
+    assert not mem[syms["wEnemyActive"]], \
+        "guardian crashed a merchant parley"
+    mem[syms["wMerchActive"]] = 0        # parley over: the guardian comes
+    for _ in range(900):
+        pb.tick()
+        if mem[syms["wEnemyActive"]]:
+            break
+    assert mem[syms["wEnemyActive"]] and mem[syms["wIsGuardian"]], \
+        "guardian never spawned after the merchant left"
+    pb.stop()
+    print("R41 merchant parley delays the guardian: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1621,6 +1719,8 @@ if __name__ == "__main__":
                r33_select_mute_and_reroll,
                r34_shipyard, r35_revenge_seas,
                r36_kraken, r37_chart_skull, r38_second_save_slot,
+               r39_merchant_despawn, r40_clean_rob,
+               r41_merchant_delays_guardian,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
