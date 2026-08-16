@@ -100,10 +100,7 @@ MulMag:
     dec a
     jr nz, .mul
 .shift
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ret
 
@@ -232,19 +229,13 @@ WorldTile::
     ; ix = wx>>3 (9-bit shift)
     ld l, c
     ld h, b
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wIX0], a
     ; iy = wy>>3 (16-bit shift; wy can exceed 255)
     ld l, e
     ld h, d
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wIY0], a
     ; four lattice hashes
@@ -327,10 +318,7 @@ DockTileIfPort:
     ld h, a
     ld a, [wGRrow]
     ld l, a
-    REPT 2
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 2
     ld c, l                       ; dy = wy / 4 (full 9-bit wy)
     call HasPortHash
     and a
@@ -352,10 +340,7 @@ GenRowStage::
     ld [wFY], a
     ld l, e
     ld h, d
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wIY0], a                 ; lattice row
     ; lattice point range: ix0 = wTileX>>3, ix1 = (wTileX+20)>>3 + 1
@@ -363,10 +348,7 @@ GenRowStage::
     ld l, a
     ld a, [wTileX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wIX0], a
     ld a, [wTileX]
@@ -375,10 +357,7 @@ GenRowStage::
     ld a, [wTileX+1]
     adc 0
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     inc a
     ld [wIY1], a                 ; (repurposed: ix1)
@@ -444,10 +423,7 @@ GenRowStage::
     ld l, a
     ld a, [wWX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld hl, wIX0
     sub [hl]
@@ -505,10 +481,7 @@ GenColStage::
     ld l, a
     ld a, d
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wIX0], a                 ; lattice col
     ; iy0 = wTileY>>3, iy1 = (wTileY+18)>>3 + 1
@@ -516,10 +489,7 @@ GenColStage::
     ld l, a
     ld a, [wTileY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wIY0], a
     ld a, [wTileY]
@@ -528,10 +498,7 @@ GenColStage::
     ld a, [wTileY+1]
     adc 0
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     inc a
     ld [wIY1], a
@@ -593,10 +560,7 @@ GenColStage::
     ld l, a                      ; hl = wy, full 9 bits (<= 287 by camera clamp)
     and 7                        ; a = wy & 7 (h/l keep wy)
     ld [wFY], a
-    REPT 3
-    srl h
-    rr l
-    ENDR                           ; hl = wy >> 3
+    SR16 h, l, 3                ; hl = wy >> 3
     ld a, l
     ld hl, wIY0
     sub [hl]
@@ -726,12 +690,10 @@ BlitRowStage::
     ld a, [wIsCGB]
     cp $11                      ; DMG-class HW has one VRAM bank: writing
     ret nz                      ; attrs there would overwrite the tilemap
-    ld a, 1
-    ldh [rVBK], a
+    VBK1
     ld hl, wStageRowAttrs
     call BlitRowPass
-    xor a
-    ldh [rVBK], a
+    VBK0
     ret
 
 ; Copy a staged column from hl into the BG map: col (wStageCol & 31),
@@ -813,12 +775,10 @@ BlitColStage::
     ld a, [wIsCGB]
     cp $11
     ret nz
-    ld a, 1
-    ldh [rVBK], a
+    VBK1
     ld hl, wStageColAttrs
     call BlitColPass
-    xor a
-    ldh [rVBK], a
+    VBK0
     ret
 
 ; ---------------------------------------------------------------------------
@@ -1069,18 +1029,12 @@ MarkExplored::
     ld l, a
     ld a, [wShipX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR                           ; hl = tx
+    SR16 h, l, 3                ; hl = tx
     ld a, [wShipY]
     ld e, a
     ld a, [wShipY+1]
     ld d, a
-    REPT 3
-    srl d
-    rr e
-    ENDR                           ; de = ty
+    SR16 d, e, 3                ; de = ty
     ld a, [wMarkTX]
     cp l
     jr nz, .moved
@@ -1280,13 +1234,11 @@ RenderChart:
     ld a, c
     call TileAttr
     ld c, a
-    ld a, 1
-    ldh [rVBK], a
+    VBK1
     dec hl
     ld [hl], c
     inc hl
-    xor a
-    ldh [rVBK], a
+    VBK0
     pop hl
 .noAttr
     ld a, [wChX]

@@ -37,10 +37,7 @@ Mix16::
     ; x ^= x << 7
     ld d, h
     ld e, l
-    REPT 7
-    sla e
-    rl d
-    ENDR
+    SL16 d, e, 7
     ld a, l
     xor e
     ld l, a
@@ -50,10 +47,7 @@ Mix16::
     ; x ^= x >> 9
     ld d, h
     ld e, l
-    REPT 9
-    srl d
-    rr e
-    ENDR
+    SR16 d, e, 9
     ld a, l
     xor e
     ld l, a
@@ -77,10 +71,7 @@ Rand16::
     ; x ^= x << 7
     ld d, h
     ld e, l
-    REPT 7
-    sla e
-    rl d
-    ENDR
+    SL16 d, e, 7
     ld a, l
     xor e
     ld l, a
@@ -90,10 +81,7 @@ Rand16::
     ; x ^= x >> 9
     ld d, h
     ld e, l
-    REPT 9
-    srl d
-    rr e
-    ENDR
+    SR16 d, e, 9
     ld a, l
     xor e
     ld l, a

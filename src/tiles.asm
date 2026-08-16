@@ -62,8 +62,7 @@ CGBInit::
     cp $11
     ret nz
     ; clear attribute banks of both BG maps ($9800/$9C00)
-    ld a, 1
-    ldh [rVBK], a
+    VBK1
     xor a
     ld hl, $9800
     ld bc, 2048                  ; b = 8 pages, c wraps 256..1
@@ -73,8 +72,7 @@ CGBInit::
     jr nz, .clr
     dec b
     jr nz, .clr
-    xor a
-    ldh [rVBK], a
+    VBK0
     ; BG palettes 0-3
     ld a, $80                      ; index 0, auto-increment
     ldh [rBGPI], a

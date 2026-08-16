@@ -398,16 +398,14 @@ DigScene::
     call SetFrag
     call CountFrags
     ld [wDigCount], a              ; the reveal reads it after the ceremony
-    call LcdOff
-    call DrawSeedScreen
+    call ClearTextScreen
     ld hl, StrDigSpot
     ld de, $9800 + 4 * 32 + 2
     call PrintStr
     ld hl, StrDigging
     ld de, $9800 + 6 * 32 + 6
     call PrintStr
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ld a, 90
     ld [wDigT], a
     ld a, SFX_KNOCK
@@ -425,8 +423,7 @@ DigReveal:
     jr z, .final
     ; render: "YOU FOUND A CHART FRAGMENT!" + "k OF 9"
     push af
-    call LcdOff
-    call DrawSeedScreen
+    call ClearTextScreen
     ld hl, StrFound1
     ld de, $9800 + 4 * 32 + 5
     call PrintStr
@@ -444,8 +441,7 @@ DigReveal:
     ; 9th fragment: begin the final battle
     ld a, 1
     ld [wFinal], a
-    call LcdOff
-    call DrawSeedScreen
+    call ClearTextScreen
     ld hl, StrFinal1
     ld de, $9800 + 4 * 32 + 2
     call PrintStr
@@ -453,8 +449,7 @@ DigReveal:
     ld de, $9800 + 5 * 32 + 4
     call PrintStr
 .show
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ret
 
 UpdateDig::
@@ -521,11 +516,7 @@ Victory::
     ld a, JINGLE_WIN
     call SetSong
     call SaveGame
-    call LcdOff
-    xor a
-    ldh [rSCX], a
-    ldh [rSCY], a
-    call DrawSeedScreen
+    call ClearTextScreen
     ld hl, StrWin1
     ld de, $9800 + 3 * 32 + 1
     call PrintStr
@@ -544,8 +535,7 @@ Victory::
     ld hl, StrTheEnd
     ld de, $9800 + 9 * 32 + 7
     call PrintStr
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ld a, STATE_WIN
     ld [wState], a
     ret

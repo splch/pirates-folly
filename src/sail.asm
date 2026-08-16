@@ -121,8 +121,7 @@ LeaveSail:
     call DrawSeedScreen
     call DrawSeedHints
     call RenderSeedRow
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     xor a
     ld [wState], a                 ; STATE_EDIT
     ret
@@ -133,10 +132,7 @@ ComputeTiles:
     ld l, a
     ld a, [wCamX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wTileX], a
     ld a, h
@@ -145,10 +141,7 @@ ComputeTiles:
     ld l, a
     ld a, [wCamY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, l
     ld [wTileY], a
     ld a, h
@@ -654,10 +647,7 @@ ComputeShipPx:
     ld l, a
     ld a, [wPosX+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld [wShipX], a
     ld a, h
@@ -666,10 +656,7 @@ ComputeShipPx:
     ld l, a
     ld a, [wPosY+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld [wShipY], a
     ld a, h
@@ -682,20 +669,14 @@ SailCollide:
     ld l, a
     ld a, [wShipX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld c, l
     ld b, h                        ; bc = tx
     ld a, [wShipY]
     ld l, a
     ld a, [wShipY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld e, l
     ld d, h                        ; de = ty
     call WorldTile
@@ -755,16 +736,11 @@ Wreck::
     ld [wStormT+1], a              ; else it sweeps the respawn into another
                                    ; wreck, over and over
     ; wreck message
-    call LcdOff
-    xor a
-    ldh [rSCX], a
-    ldh [rSCY], a
-    call DrawSeedScreen
+    call ClearTextScreen
     ld hl, StrWreck
     ld de, $9800 + 8 * 32 + 5
     call PrintStr
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ld a, JINGLE_WRECK
     call SetSong
     ld b, 90
@@ -857,10 +833,7 @@ CheckStream:
     ld l, a
     ld a, [wCamX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR                           ; hl = new tileX
+    SR16 h, l, 3                ; hl = new tileX
     ld a, [wTileX]
     ld c, a
     ld a, [wTileX+1]
@@ -908,10 +881,7 @@ CheckStream:
     ld l, a
     ld a, [wCamY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, [wTileY]
     ld c, a
     ld a, [wTileY+1]
@@ -987,20 +957,14 @@ SailHud:
     ld l, a
     ld a, [wShipX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld de, wHudDigits
     call WriteHexTriple
     ld a, [wShipY]
     ld l, a
     ld a, [wShipY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     call WriteHexTriple
     ld a, [wVelX]
     call AbsA

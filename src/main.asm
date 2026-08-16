@@ -500,8 +500,7 @@ DrawSeedScreen::
     ld a, [wIsCGB]
     cp $11                      ; not CGB: single VRAM bank, no attrs
     ret nz
-    ld a, 1
-    ldh [rVBK], a
+    VBK1
     xor a
     ld hl, $9800
     ld bc, 1024
@@ -511,8 +510,7 @@ DrawSeedScreen::
     jr nz, .aloop
     dec b
     jr nz, .aloop
-    xor a
-    ldh [rVBK], a
+    VBK0
     ret
 
 ; Editor-only continue hint (when a save exists). LCD off or VBlank.
@@ -551,12 +549,10 @@ DrawSeedHints::
 
 ; LCD-off redraw of the editor screen, LCD back on.
 ShowSeedScreen::
-    call LcdOffHome
-    call DrawSeedScreen
+    call ClearTextScreen
     call DrawSeedHints
     call RenderSeedRow
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ret
 
 ; wSeed (4 bytes) -> wSeedNib (8 nibbles)

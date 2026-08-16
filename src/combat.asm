@@ -265,16 +265,10 @@ PickSpawnSpot:
     push hl
     ld b, d
     ld c, e
-    REPT 3
-    srl b
-    rr c
-    ENDR                           ; bc = tx
+    SR16 b, c, 3                ; bc = tx
     ld d, h
     ld e, l
-    REPT 3
-    srl d
-    rr e
-    ENDR                           ; de = ty
+    SR16 d, e, 3                ; de = ty
     call WorldTile
     pop hl
     pop de
@@ -298,24 +292,10 @@ SpawnEnemy::
     ld [wNoLOS], a
     ld a, 16
     ld [wLosT], a
-    ; wEnemyY = ey << 4 (ey in hl)
-    REPT 4
-    add hl, hl
-    ENDR
-    ld a, l
-    ld [wEnemyY], a
-    ld a, h
-    ld [wEnemyY+1], a
-    ; wEnemyX = ex << 4 (ex in de)
-    ld l, e
-    ld h, d
-    REPT 4
-    add hl, hl
-    ENDR
-    ld a, l
-    ld [wEnemyX], a
-    ld a, h
-    ld [wEnemyX+1], a
+    ld b, d
+    ld c, e
+    ld de, wEnemyX
+    call StorePos124               ; enemy 12.4 pos = (ex, ey) << 4
     ; the seas grow bolder as the chart assembles: +1 HP at 3 and 6
     ; fragments, volleys 5 frames quicker per fragment. Guardians get
     ; their own stats: SpawnGuardian overrides both right after this.
@@ -356,20 +336,14 @@ SpawnKrakenIfDeep:
     ld l, a
     ld a, [wShipX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld c, l
     ld b, h                        ; bc = ship tile x
     ld a, [wShipY]
     ld l, a
     ld a, [wShipY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld e, l
     ld d, h
     call WorldTile
@@ -406,24 +380,32 @@ SpawnMerchant::
     ld [wMerchT], a
     ld a, HIGH(900)
     ld [wMerchT+1], a
-    ; wMerchY = ey << 4 (ey in hl)
-    REPT 4
-    add hl, hl
-    ENDR
+    ld b, d
+    ld c, e
+    ld de, wMerchX
+    call StorePos124               ; merchant 12.4 pos = (ex, ey) << 4
+    ret
+
+; in: de = dest (12.4 X, Y at de+2), bc = pixel X, hl = pixel Y.
+; Writes dest = (X << 4, Y << 4). clobbers a, d, e, h, l
+StorePos124:
+    push hl                        ; pixel Y
+    ld l, c
+    ld h, b
+    SL16 h, l, 4
     ld a, l
-    ld [wMerchY], a
+    ld [de], a                     ; X lo
+    inc de
     ld a, h
-    ld [wMerchY+1], a
-    ; wMerchX = ex << 4 (ex in de)
-    ld l, e
-    ld h, d
-    REPT 4
-    add hl, hl
-    ENDR
+    ld [de], a                     ; X hi
+    inc de
+    pop hl
+    SL16 h, l, 4
     ld a, l
-    ld [wMerchX], a
+    ld [de], a                     ; Y lo
+    inc de
     ld a, h
-    ld [wMerchX+1], a
+    ld [de], a                     ; Y hi
     ret
 
 ; out: a = rough pixel range to the merchant (255 if either axis >= 256).
@@ -433,10 +415,7 @@ MerchRange:
     ld l, a
     ld a, [wMerchX+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR                           ; hl = merch px X
+    SR16 h, l, 4                ; hl = merch px X
     ld a, [wShipX]
     ld c, a
     ld a, [wShipX+1]
@@ -453,10 +432,7 @@ MerchRange:
     ld l, a
     ld a, [wMerchY+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, [wShipY]
     ld c, a
     ld a, [wShipY+1]
@@ -725,10 +701,7 @@ EnemyDelta:
     ld l, a
     ld a, [wEnemyX+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, [wShipX]
     ld c, a
     ld a, [wShipX+1]
@@ -745,10 +718,7 @@ EnemyDelta:
     ld l, a
     ld a, [wEnemyY+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, [wShipY]
     ld c, a
     ld a, [wShipY+1]
@@ -1007,10 +977,7 @@ UpdateEnemy:
     ld h, a
     ld a, [wEvX]
     call AddSignedHL               ; hl = enemyX + vx
-    REPT 7
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 7
     ld c, l
     ld b, h                        ; target tx
     ld a, [wEnemyY]
@@ -1019,10 +986,7 @@ UpdateEnemy:
     ld h, a
     ld a, [wEvY]
     call AddSignedHL
-    REPT 7
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 7
     ld e, l
     ld d, h                        ; target ty
     push bc
@@ -1128,64 +1092,9 @@ UpdateBalls:
     ld a, [wEnemyActive]
     and a
     jp z, .enemyBall
-    ; |ballPx - enemyPx| < 6 (pixel space)
-    ld a, [wBallPX]
-    ld l, a
-    ld a, [wBallPX+1]
-    ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR                           ; hl = ballPx
-    ld a, [wEnemyX]
-    ld c, a
-    ld a, [wEnemyX+1]
-    ld b, a
-    REPT 4
-    srl b
-    rr c
-    ENDR                           ; bc = enemyPx
-    ld a, l
-    sub c
-    ld l, a
-    ld a, h
-    sbc b
-    ld h, a
-    call AbsHL                     ; hl = |dx|
-    ld a, h
-    and a
-    jp nz, .enemyBall              ; too far
-    ld a, l
-    cp 6
-    jp nc, .enemyBall
-    ld a, [wBallPY]
-    ld l, a
-    ld a, [wBallPY+1]
-    ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
-    ld a, [wEnemyY]
-    ld c, a
-    ld a, [wEnemyY+1]
-    ld b, a
-    REPT 4
-    srl b
-    rr c
-    ENDR
-    ld a, l
-    sub c
-    ld l, a
-    ld a, h
-    sbc b
-    ld h, a
-    call AbsHL
-    ld a, h
-    and a
-    jp nz, .enemyBall
-    ld a, l
-    cp 6
+    ld de, wBallPX
+    ld hl, wEnemyX
+    call BallNear
     jp nc, .enemyBall
     ; HIT!
     call .killP2
@@ -1207,10 +1116,7 @@ UpdateBalls:
     ld l, a
     ld a, [wEnemyX+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld [wSinkX], a
     ld a, h
@@ -1219,10 +1125,7 @@ UpdateBalls:
     ld l, a
     ld a, [wEnemyY+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld [wSinkY], a
     ld a, h
@@ -1291,56 +1194,10 @@ UpdateBalls:
     ld de, wBallEX
     call BallHitLand
     jp nc, .killE
-    ; hit player? |ballPx - shipPx| < 6 both axes
-    ld a, [wBallEX]
-    ld l, a
-    ld a, [wBallEX+1]
-    ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
-    ld a, [wShipX]
-    ld c, a
-    ld a, [wShipX+1]
-    ld b, a
-    ld a, l
-    sub c
-    ld l, a
-    ld a, h
-    sbc b
-    ld h, a
-    call AbsHL
-    ld a, h
-    and a
-    ret nz
-    ld a, l
-    cp 6
-    ret nc
-    ld a, [wBallEY]
-    ld l, a
-    ld a, [wBallEY+1]
-    ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
-    ld a, [wShipY]
-    ld c, a
-    ld a, [wShipY+1]
-    ld b, a
-    ld a, l
-    sub c
-    ld l, a
-    ld a, h
-    sbc b
-    ld h, a
-    call AbsHL
-    ld a, h
-    and a
-    ret nz
-    ld a, l
-    cp 6
+    ; hit player?
+    ld de, wBallEX
+    ld hl, wPosX                   ; wPosX>>4 == wShipX
+    call BallNear
     ret nc
     ; HIT!
     xor a
@@ -1387,10 +1244,7 @@ UpdateBalls:
     inc de
     ld a, [de]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld [wSplashX], a
     ld a, h
@@ -1401,10 +1255,7 @@ UpdateBalls:
     inc de
     ld a, [de]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld [wSplashY], a
     ld a, h
@@ -1432,10 +1283,7 @@ RenderCombat::
     ld l, a
     ld a, [wEnemyX+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld hl, wCamX
     sub [hl]
@@ -1445,10 +1293,7 @@ RenderCombat::
     ld l, a
     ld a, [wEnemyY+1]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld hl, wCamY
     sub [hl]
@@ -1612,10 +1457,7 @@ RenderCombat::
     inc de
     ld a, [de]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld hl, wCamX
     sub [hl]
@@ -1627,10 +1469,7 @@ RenderCombat::
     inc de
     ld a, [de]
     ld h, a
-    REPT 4
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 4
     ld a, l
     ld hl, wCamY
     sub [hl]
@@ -1658,6 +1497,73 @@ RenderCombat::
     ld [hl], a
     ret
 
+; in: de = ptr to a 12.4 X (Y at +2), hl = ptr to another 12.4 X (Y at
+; +2). out: carry set iff the two are within 6 px on both axes.
+; clobbers a, b, c, d, e, h, l
+BallNear:
+    push de
+    push hl
+    ld a, [de]
+    ld c, a
+    inc de
+    ld a, [de]
+    ld b, a
+    SR16 b, c, 4                   ; bc = ball px X
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    SR16 h, l, 4                   ; hl = target px X
+    ld a, c
+    sub l
+    ld l, a
+    ld a, b
+    sbc h
+    ld h, a
+    call AbsHL                     ; |dx|
+    ld a, h
+    and a
+    jr nz, .farPop
+    ld a, l
+    cp 6
+    jr nc, .farPop
+    pop hl
+    pop de
+    inc de                         ; ball Y
+    inc de
+    inc hl                         ; target Y
+    inc hl
+    ld a, [de]
+    ld c, a
+    inc de
+    ld a, [de]
+    ld b, a
+    SR16 b, c, 4
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    SR16 h, l, 4
+    ld a, c
+    sub l
+    ld l, a
+    ld a, b
+    sbc h
+    ld h, a
+    call AbsHL                     ; |dy|
+    ld a, h
+    and a
+    jr nz, .far
+    ld a, l
+    cp 6
+    jr nc, .far
+    scf
+    ret
+.farPop
+    pop hl
+    pop de
+.far
+    and a
+    ret
+
 ; in: de = ptr to a ball's 12.4 X (Y at de+2); out: carry CLEAR iff the
 ; ball's tile is land. clobbers a, b, c, d, e, h, l
 BallHitLand:
@@ -1666,10 +1572,7 @@ BallHitLand:
     inc de
     ld a, [de]
     ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR                           ; ball tile x (12.4 -> tile = >>7)
+    SR16 h, l, 7                ; ball tile x (12.4 -> tile = >>7)
     ld c, l
     ld b, h
     inc de
@@ -1678,10 +1581,7 @@ BallHitLand:
     inc de
     ld a, [de]
     ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 7
     ld e, l
     ld d, h                        ; de = tile y
     call WorldTile
@@ -1696,20 +1596,14 @@ HasLOS:
     ld l, a
     ld a, [wEnemyX+1]
     ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR                           ; 12.4 -> tile
+    SR16 h, l, 7                ; 12.4 -> tile
     ld a, l
     ld [wLoX0], a
     ld a, [wEnemyY]
     ld l, a
     ld a, [wEnemyY+1]
     ld h, a
-    REPT 7
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 7
     ld a, l
     ld [wLoY0], a
     ; dx = shipTileX - enemyTileX (signed)
@@ -1717,10 +1611,7 @@ HasLOS:
     ld l, a
     ld a, [wShipX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, [wLoX0]
     ld c, a
     ld b, 0
@@ -1739,10 +1630,7 @@ HasLOS:
     ld l, a
     ld a, [wShipY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld a, [wLoY0]
     ld c, a
     ld b, 0

@@ -63,20 +63,14 @@ TryDock::
     ld l, a
     ld a, [wShipX+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld c, l
     ld b, h                        ; bc = tx
     ld a, [wShipY]
     ld l, a
     ld a, [wShipY+1]
     ld h, a
-    REPT 3
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 3
     ld e, l
     ld d, h                        ; de = ty
     ; store tile coords for neighbor checks
@@ -147,20 +141,14 @@ TryDock::
     ld l, a
     ld a, [wBeachX+1]
     ld h, a
-    REPT 2
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 2
     ld a, l
     ld [wPortDX], a                  ; dx
     ld a, [wBeachY]
     ld l, a
     ld a, [wBeachY+1]
     ld h, a
-    REPT 2
-    srl h
-    rr l
-    ENDR
+    SR16 h, l, 2
     ld a, l
     ld [wPortDY], a                  ; dy
     ; port check (reload b/c from WRAM: call-clobber-proof)
@@ -202,8 +190,7 @@ TryDock::
     call LcdOffHome                ; UI screens are unscrolled
     call ClearOAM
     call RenderPort
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ld a, STATE_PORT
     ld [wState], a
     ret
@@ -671,13 +658,7 @@ RenderTrade:
     pop de
     ld a, [wPortK]
     ld hl, GOOD_NAMES
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     call PrintStr
     ; price
     pop af                           ; row
@@ -830,13 +811,7 @@ RenderTavern:
     ld a, [wPortHash+1]
     and $0F
     ld hl, RUMORS
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     ld de, $9800 + 6 * 32
     call PrintStr
     ; nearest port
@@ -865,13 +840,7 @@ RenderTavern:
     call PrintStr
     ld a, [wNpDir]
     ld hl, DIRS
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     ld de, $9800 + 9 * 32 + 9
     call PrintStr
     jr .restore
@@ -898,13 +867,7 @@ RenderTavern:
     ret z                          ; none left
     ld a, [wBestIsle]              ; legendary name of that isle
     ld hl, ISLE_NAMES
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     ld de, $9800 + 11 * 32 + 1
     call PrintStr
     ld a, [wNpDays]
@@ -915,13 +878,7 @@ RenderTavern:
     call PrintStr
     ld a, [wNpDir]
     ld hl, DIRS
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     ld de, $9800 + 12 * 32 + 9
     call PrintStr
     ret
@@ -962,8 +919,7 @@ UpdatePort::
     ld [wPortDirty], a
     call LcdOff
     call RenderPort
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
 .input
     ld a, [wPortState]
     and a
@@ -1217,13 +1173,7 @@ RenderShipyard:
     pop de
     ld a, [wPortK]
     ld hl, UPG_NAMES
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     call PrintStr
     ld a, [wPortK]
     add 6
@@ -1361,9 +1311,8 @@ MerchScene::
     ld a, [hl]
     srl a                          ; half the base price (2,5,7,12)
     ld [wMerchPrice], a
-    call LcdOffHome
+    call ClearTextScreen
     call ClearOAM
-    call DrawSeedScreen
     ld hl, StrMerchHail
     ld de, $9800 + 3 * 32
     call PrintStr
@@ -1377,14 +1326,8 @@ MerchScene::
     ld [de], a
     inc de
     ld a, [wMerchGood]
-    add a
-    ld c, a
-    ld b, 0
     ld hl, GOOD_NAMES
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     call PrintStr
     ld hl, StrMerchAt
     call PrintStr
@@ -1398,8 +1341,7 @@ MerchScene::
     ld hl, StrMerchRob
     ld de, $9800 + 8 * 32 + 3
     call PrintStr
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     ld a, SFX_BELL
     call PlaySfx
     ld a, STATE_MERCH
@@ -1409,14 +1351,12 @@ MerchScene::
 ; hl = result string: clear the screen, show it, consume the merchant.
 MerchResult:
     push hl
-    call LcdOff
+    call ClearTextScreen
     call ClearOAM
-    call DrawSeedScreen
     pop hl
     ld de, $9800 + 4 * 32
     call PrintStr
-    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
-    ldh [rLCDC], a
+    call ShowTextScreen
     xor a
     ld [wMerchActive], a
     ret
@@ -1531,6 +1471,31 @@ UpdateMerch::
 ; ---------------------------------------------------------------------------
 ; Text helpers
 ; ---------------------------------------------------------------------------
+
+; UI screen framing: LCD off, scroll home, canonical BGP, blank tilemaps.
+; (Entering from the sea without this left the screen at the ocean's
+; scroll offset — and in the storm palette.)
+ClearTextScreen::
+    call LcdOffHome
+    call DrawSeedScreen
+    ret
+
+; LCD on, BG only: every text screen's postamble.
+ShowTextScreen::
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    ret
+
+; in: hl = word table, a = index; out: hl = table[a]. clobbers a, b, c, hl
+WordEntry:
+    add a
+    ld c, a
+    ld b, 0
+    add hl, bc
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    ret
 
 ; hl = 0-terminated string, de = tilemap address. clobbers a, hl, de
 PrintStr::
@@ -1667,13 +1632,7 @@ PrintPortName:
     and $0F
     ld hl, PORT_SUFFIX
 .entry
-    add a
-    ld c, a
-    ld b, 0
-    add hl, bc
-    ld a, [hli]
-    ld h, [hl]
-    ld l, a
+    call WordEntry
     jp PrintStr
 
 ; ---------------------------------------------------------------------------

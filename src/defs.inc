@@ -1,5 +1,31 @@
 ; Shared constants for PIRATE'S FOLLY
 
+; 16-bit pair shifts (pure assembly-time): SR16 logical right, SL16 left.
+MACRO SR16            ; \1 = high-byte reg, \2 = low-byte reg, \3 = bits
+    REPT \3
+    srl \1
+    rr \2
+    ENDR
+ENDM
+
+MACRO SL16            ; \1 = high-byte reg, \2 = low-byte reg, \3 = bits
+    REPT \3
+    sla \2
+    rl \1
+    ENDR
+ENDM
+
+; CGB VRAM bank select (no-ops to write on DMG: the CGB guards gate these)
+MACRO VBK1
+    ld a, 1
+    ldh [rVBK], a
+ENDM
+
+MACRO VBK0
+    xor a
+    ldh [rVBK], a
+ENDM
+
 ; --- Game states ---
 DEF STATE_EDIT EQU 0        ; seed editor screen
 DEF STATE_MAP  EQU 1        ; generated island view (M0, superseded)
