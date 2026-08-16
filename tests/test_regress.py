@@ -1739,6 +1739,40 @@ def r42_enemy_shot_cant_cross_land():
     pb.stop()
     print("R42 enemy shots die on land: OK")
 
+# ----------------- R43: text screens entered from the sea reset scroll
+
+def r43_text_screens_reset_scroll():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    # an isle beach, guardian pre-sunk (as R32)
+    ix, iy = mem[syms["wIsles"]], mem[syms["wIsles"] + 1]
+    spot = None
+    for ty in range(iy * 18, iy * 18 + 18):
+        for tx in range(ix * 20, ix * 20 + 20):
+            if tile(tx, ty, s16) >= 3:
+                continue
+            if any(tile(tx + ddx, ty + ddy, s16) >= 3
+                   for ddx, ddy in ((0, 1), (0, -1), (1, 0), (-1, 0))):
+                spot = (tx, ty)
+                break
+        if spot:
+            break
+    assert spot
+    mem[syms["wGuardMask"]] = 1
+    assert teleport(pb, *spot)
+    # mid-sea camera: the scroll registers must be nonzero
+    assert mem[0xFF43] != 0 or mem[0xFF42] != 0, "camera never scrolled"
+    press3(pb, "a")                        # dig scene (a text screen)
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wState"]] == 5, "dig didn't open"
+    assert mem[0xFF43] == 0 and mem[0xFF42] == 0, \
+        f"dig screen scrolled: SCX {mem[0xFF43]} SCY {mem[0xFF42]}"
+    pb.stop()
+    print("R43 text screens reset scroll: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1759,6 +1793,7 @@ if __name__ == "__main__":
                r39_merchant_despawn, r40_clean_rob,
                r41_merchant_delays_guardian,
                r42_enemy_shot_cant_cross_land,
+               r43_text_screens_reset_scroll,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
