@@ -10,7 +10,7 @@ wEnemyX:        dw              ; 12.4 fixed point
 wEnemyY:        dw
 wEnemyHP::      db
 wEnemyFireCool:: db
-wFireCool:      db
+wFireCool::     db
 wBallPActive::  db
 wBallPX:        dw
 wBallPY:        dw

@@ -73,6 +73,8 @@ EntryPoint:
     ld [wEnemyActive], a
     ld [wBallPActive], a
     ld [wBallEActive], a
+    ld [wFireCool], a
+    ld [wEnemyFireCool], a
     ld [wCursor], a
 
     call SoundInit
