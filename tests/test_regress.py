@@ -1702,6 +1702,43 @@ def r41_merchant_delays_guardian():
     pb.stop()
     print("R41 merchant parley delays the guardian: OK")
 
+# ----------------- R42: enemy cannonballs die on land like the player's
+
+def r42_enemy_shot_cant_cross_land():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    # open water with a coast to the east
+    spot = find_water(s16, 20, 30, 140, 148,
+                      lambda x, y: tile(x + 8, y, s16) >= 3)
+    assert spot, "no test spot found"
+    assert teleport(pb, *spot)
+    mem[syms["wEnemyActive"]] = 0
+    set16(mem, "wStormT", 0)
+    coast_px = None
+    for k in range(1, 16):
+        if tile(spot[0] + k, spot[1], s16) >= 3:
+            coast_px = (spot[0] + k) * 8
+            break
+    assert coast_px, "no coast east of the spot"
+    # enemy ball fired east into the coast, full life budget
+    set16(mem, "wBallEX", w16(mem, "wPosX"))
+    set16(mem, "wBallEY", w16(mem, "wPosY"))
+    mem[syms["wBallEVX"]] = 48
+    mem[syms["wBallEVY"]] = 0
+    mem[syms["wBallELife"]] = 40
+    mem[syms["wBallEActive"]] = 1
+    for _ in range(45):
+        pb.tick()
+        if not mem[syms["wBallEActive"]]:
+            break
+    assert not mem[syms["wBallEActive"]], "enemy ball flew through land"
+    bx = w16(mem, "wBallEX") >> 4
+    assert bx < coast_px + 8, f"ball crossed the coast: {bx} vs {coast_px}"
+    pb.stop()
+    print("R42 enemy shots die on land: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1721,6 +1758,7 @@ if __name__ == "__main__":
                r36_kraken, r37_chart_skull, r38_second_save_slot,
                r39_merchant_despawn, r40_clean_rob,
                r41_merchant_delays_guardian,
+               r42_enemy_shot_cant_cross_land,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
