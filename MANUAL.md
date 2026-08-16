@@ -131,6 +131,8 @@ inked in — sea and land — while the rest stays blank parchment.
 * Your ship's position is marked on the chart.
 * Ports you have docked at are marked with a little harbor house. You
   need only visit a port once to remember it forever.
+* Your voyage's seed is printed along the bottom — note it down, and you
+  can sail this same sea again (or dare a friend to).
 * Press A, B, or START to return to the helm.
 
 Chart everything. A blank chart makes a poor pirate and a rich undertaker.
@@ -165,8 +167,8 @@ dock. Every port offers:
   the hold fits 50 barrels in all.
 * **REPAIR** — The shipwright patches your hull, 2 gold per point.
 * **TAVERN** — See below. Worth the price of admission alone.
-* **RECRUIT** — Hire able seamen, 5 gold a head. A well-manned ship is a
-  happy ship.
+* **RECRUIT** — Hire able seamen, 5 gold a head. The more hands aboard,
+  the faster your cannons reload. A well-manned ship fires fast.
 * **SAVE** — Record the voyage in the Captain's Log.
 * **SET SAIL** — Back to the horizon.
 
@@ -223,9 +225,10 @@ nine* and counting. X marks the spot, Captain, nine times over.
 
 The ninth fragment is not the end. It is the beginning of the end.
 
-Assembling the complete chart wakes the **final fleet** — guardian ships
-rising one after another to defend the Treasure of the Nine Isles. Sink
-them all. There is no retreat, no repair, no mercy.
+Assembling the complete chart wakes the **final fleet** — four guardian
+ships rising one after another to defend the Treasure of the Nine Isles,
+each tougher and quicker on the trigger than the last. Sink them all.
+There is no retreat, no repair, no mercy.
 
 Survive, and the Treasure — and your final haul of gold — is yours.
 The screen will say the rest.
@@ -270,6 +273,7 @@ themselves need no remembering — the seed always knows where they lie.
   sell them where they're dear, and let the merchants call it piracy.
 * A wreck costs half your gold. Gold spent in port, on the other hand,
   cannot be lost at sea.
+* Twenty hands reload your broadside a third faster than five.
 
 ---
 
