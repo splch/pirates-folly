@@ -745,6 +745,8 @@ def f2_storm_drift_range():
             set16(mem, "wStormT", 0)
             mem[syms["wEnemyActive"]] = 0
             set16(mem, "wMarkTX", 0xFFFF)
+            mem[syms["wShipCX"]] = 0xFF     # force a cell re-entry: the tile
+            mem[syms["wShipCY"]] = 0xFF     # cache alone only re-derives tiles
             bit = (cy * 16 + cx) % 8
             for _ in range(4):
                 pb.tick()
@@ -1034,6 +1036,161 @@ def r23_chart_shows_seed():
     pb.stop()
     print("R23 chart shows the voyage seed: OK")
 
+# ----------------- R24/R25: charted-cell revisit rolls + fragment scaling
+
+# xorshift16 mirror of rng.asm Rand16 (triplet 7,9,8)
+def xs16(x):
+    x ^= (x << 7) & 0xFFFF
+    x ^= x >> 9
+    x ^= (x << 8) & 0xFFFF
+    return x & 0xFFFF
+
+# revisit-roll outcomes are driven by wRngState, so pick states with known
+# results. SpawnEnemy then draws the offset from the NEXT Rand16: forbid
+# west offsets (2, 6) — water west of the spawn point is unvalidated.
+def _spawn_state():
+    def good(s):
+        r1 = xs16(s)
+        if (r1 & 0xFF) >= 12 or (r1 >> 8) < 3:   # must roll a pirate, no storm
+            return False
+        return (xs16(r1) & 0xFF) & 7 in (0, 1, 3, 4, 5, 7)
+    return next(s for s in range(1, 0x10000) if good(s))
+
+# l in [12,48): a new-cell roll (<48) would spawn, the reduced revisit
+# roll must not
+_NO_ROLL = next(s for s in range(1, 0x10000)
+                if 12 <= (xs16(s) & 0xFF) < 48 and (xs16(s) >> 8) >= 3)
+_SPAWN = _spawn_state()
+
+# wRngState is stored h-first (hl big-endian: rng.asm loads h from the
+# first byte), so set16 would write the state byte-swapped.
+def _set_rng(mem, s):
+    mem[syms["wRngState"]] = s >> 8
+    mem[syms["wRngState"] + 1] = s & 0xFF
+
+def _sail_into_marked_cell(rng_state, frags=0):
+    """Spawn cell (cx,cy) is charted by the new-game ticks; pre-chart the
+    cell to its east and sail in. Returns (pb, mem) stopped at the crossing."""
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    mem[syms["wEnemyActive"]] = 0        # clear the spawn cell's own roll
+    set16(mem, "wStormT", 0)
+    set16(mem, "wFragMask", frags)
+    cx, cy = mem[syms["wShipCX"]], mem[syms["wShipCY"]]
+    isles = {(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
+             for k in range(9)}
+    assert (cx + 1, cy) not in isles, "east cell is an isle cell: no rolls there"
+    bit = cy * 16 + cx + 1
+    mem[syms["wExplored"] + bit // 8] |= 1 << (bit % 8)
+    _set_rng(mem, rng_state)
+    pb.button_press("right")
+    for _ in range(300):
+        pb.tick()
+        if mem[syms["wShipCX"]] == cx + 1:
+            break
+    pb.button_release("right")
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wShipCX"]] == cx + 1, "never reached the charted cell"
+    return pb
+
+def r24_revisit_rolls_reduced():
+    pb = _sail_into_marked_cell(_NO_ROLL)
+    assert not pb.memory[syms["wEnemyActive"]], \
+        "revisit roll spawned at full new-cell odds"
+    pb.stop()
+    pb = _sail_into_marked_cell(_SPAWN)
+    assert pb.memory[syms["wEnemyActive"]] == 1, \
+        "revisit roll never spawned at reduced odds"
+    pb.stop()
+    print("R24 charted-cell revisit rolls at reduced odds: OK")
+
+def r25_pirates_scale_with_fragments():
+    pb = _sail_into_marked_cell(_SPAWN, frags=0)
+    assert pb.memory[syms["wEnemyHP"]] == 3, \
+        f"0-fragment HP {pb.memory[syms['wEnemyHP']]}, want 3"
+    assert 60 <= pb.memory[syms["wEnemyFireCool"]] <= 75, \
+        f"0-fragment cooldown {pb.memory[syms['wEnemyFireCool']]}, want ~75"
+    pb.stop()
+    pb = _sail_into_marked_cell(_SPAWN, frags=0b111)   # 3 fragments
+    assert pb.memory[syms["wEnemyHP"]] == 4, \
+        f"3-fragment HP {pb.memory[syms['wEnemyHP']]}, want 4"
+    assert 45 <= pb.memory[syms["wEnemyFireCool"]] <= 60, \
+        f"3-fragment cooldown {pb.memory[syms['wEnemyFireCool']]}, want ~60"
+    pb.stop()
+    print("R25 pirates scale with fragments held: OK")
+
+# ----------------- R26: best-haul record persists across saves
+
+def r26_best_haul_record():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    set16(mem, "wGold", 7000)
+    dock_at_district(pb, s16, *find_dockable_port(s16))   # autosaves on dock
+    assert w16(mem, "wBestGold") == 7000, \
+        f"best {w16(mem, 'wBestGold')}, want 7000"
+    set16(mem, "wGold", 10)
+    press3(pb, "b")                                        # set sail (saves)
+    assert wait_state(pb, 2), "never set sail"
+    assert w16(mem, "wBestGold") == 7000, "best haul dropped on a poorer save"
+    press3(pb, "b")                                        # quit to editor
+    for _ in range(5):
+        pb.tick()
+    press3(pb, "b")
+    assert wait_state(pb, 0), "did not return to the editor"
+    line = read_text(mem, 0x9800 + 8 * 32 + 5, 11)
+    assert line == "BEST 7000 G", f"best line {line!r}"
+    pb.stop()
+    print("R26 best-haul record + seed screen display: OK")
+
+# ----------------- R27: full chart pays the cartographer's bounty, once
+
+def r27_chart_completion_bounty():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    mem[syms["wEnemyActive"]] = 0
+    set16(mem, "wStormT", 0)
+    for i in range(32):
+        mem[syms["wExplored"] + i] = 0xFF
+    gold0 = w16(mem, "wGold")
+    press3(pb, "start")
+    assert wait_state(pb, 3), "chart didn't open"
+    assert w16(mem, "wGold") == gold0 + 500, \
+        f"gold {w16(mem, 'wGold')}, want {gold0 + 500}"
+    assert mem[syms["wCartDone"]] == 1, "bounty flag not set"
+    assert read_text(mem, 0x9800, 14) == "CHART COMPLETE", \
+        f"row 0 {read_text(mem, 0x9800, 20)!r}"
+    assert mem[0x9800 + 14] == 67, "missing '!'"
+    assert read_text(mem, 0x9800 + 15, 5) == " 500G"
+    press3(pb, "b")                        # back to sailing
+    assert wait_state(pb, 2)
+    press3(pb, "start")                    # reopen: no double award
+    assert wait_state(pb, 3)
+    assert w16(mem, "wGold") == gold0 + 500, "bounty awarded twice"
+    pb.stop()
+    print("R27 chart completion bounty (once): OK")
+
+# ----------------- R28: chart marks dug isles with X
+
+def r28_chart_marks_dug_isles():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    ix, iy = mem[syms["wIsles"]], mem[syms["wIsles"] + 1]   # isle 0's cell
+    bit = iy * 16 + ix
+    mem[syms["wExplored"] + bit // 8] |= 1 << (bit % 8)
+    set16(mem, "wFragMask", 1)                             # isle 0 dug
+    press3(pb, "start")
+    assert wait_state(pb, 3), "chart didn't open"
+    t = mem[0x9800 + (iy + 1) * 32 + (ix + 2)]
+    assert t == 32, f"isle chart tile {t}, want X (TILE_LET_X = 32)"
+    pb.stop()
+    print("R28 chart marks dug isles with X: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1043,6 +1200,9 @@ if __name__ == "__main__":
                r18_wreck_respawn_redraw, r19_cgb_streaming_no_drops,
                r20_crew_speeds_reload, r21_final_fleet_escalates,
                r22_treasure_won_tag, r23_chart_shows_seed,
+               r24_revisit_rolls_reduced, r25_pirates_scale_with_fragments,
+               r26_best_haul_record, r27_chart_completion_bounty,
+               r28_chart_marks_dug_isles,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
