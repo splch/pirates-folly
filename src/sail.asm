@@ -306,8 +306,8 @@ UpdateSail::
     jr z, .noDock
     call TryDock
     ld a, [wState]
-    cp STATE_PORT
-    ret z                          ; docked: left sailing
+    cp STATE_SAIL
+    ret nz                         ; docked or dug: no cannons either way
     call FireCannon
 .noDock
     ; save position for collision revert
