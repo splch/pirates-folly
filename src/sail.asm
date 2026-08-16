@@ -679,9 +679,21 @@ SailCollide:
     SR16 h, l, 3
     ld e, l
     ld d, h                        ; de = ty
+    push bc
+    push de
     call WorldTile
+    pop de
+    pop bc
     cp TILE_SAND
     ret c                          ; water: keep sailing
+    ; a port district's shore is a dock, not a rock (the same district
+    ; hash that draws the dock planks): stop the ship, spare the hull
+    SR16 b, c, 2
+    ld b, c                        ; dx = tx / 4
+    SR16 d, e, 2
+    ld c, e                        ; dy = ty / 4
+    call HasPortHash
+    ld c, a                        ; survives the revert below (a-only)
     ld a, [wOldPosX]
     ld [wPosX], a
     ld a, [wOldPosX+1]
@@ -694,6 +706,9 @@ SailCollide:
     ld [wVelX], a
     ld [wVelY], a
     call ComputeShipPx
+    ld a, c
+    and a
+    ret nz                         ; docking bump: no damage
     ; hull damage (with cooldown)
     ld a, [wDmgCool]
     and a
