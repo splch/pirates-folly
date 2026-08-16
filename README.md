@@ -56,6 +56,10 @@ then flash it to a cartridge or open it in any Game Boy emulator
 - **Merchants.** Lone sails hail you at close range: buy a small lot at half
   price (A), or rob the strongbox (B) — half of them sail with an escort that
   will come for you.
+- **The kraken.** Rises only in deep water, rarely (~1 in 128 encounter
+  rolls): 8 HP, quick guns, and a 60–123 gold hoard.
+- **Battery save, twice over.** Two rotating save slots with sequence
+  numbers; a corrupted slot falls back to the other copy automatically.
 - **Hull is life.** Ramming land, enemy shot, and storm-tossed drifting all
   cost hull (watch the **H** reading at the bottom of the screen, beside your
   gold and fragment count). At 0 you wreck: lose half your gold and wake in

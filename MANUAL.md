@@ -141,6 +141,8 @@ inked in — sea and land — while the rest stays blank parchment.
   can sail this same sea again (or dare a friend to).
 * Isles you have dug bare are marked with an **X**. X marks the spot —
   and the proof you took it.
+* An isle whose guardian still swims is marked with a **skull**. Sail in
+  expecting a fight.
 * Ink in every last cell of the chart and a **cartographer's bounty** of
   500 gold is yours, once per voyage.
 * Press A, B, or START to return to the helm.
@@ -162,6 +164,11 @@ more chart fragments you carry, the bolder every pirate becomes.
 where it will — hard enough that a bold captain can ride the blow like a
 fast current, if he dares. Keep a firm hand on the helm: a captain who
 fights the rudder keeps his hull; a captain who abandons it does not.
+
+**The Kraken.** Old salts swear it surfaces only over the deepest water,
+and only for captains who sail the same seas too often. It is tougher
+than any guardian — and its hoard is worth the fight. Believe half of
+what you hear. Then sail deep, and learn.
 
 **Hull is life.** Enemy shot, hidden rocks, and storm-tossed drifting all
 cost hull. When the hull reaches zero, see SHIPWRECK, and say a prayer.
@@ -286,6 +293,8 @@ Your voyage is recorded automatically:
 * and on the day you **win the Treasure**.
 
 To continue a recorded voyage, press **START** on the seed screen. The
+Log is kept in two fair copies — if one is ever spoiled, the quartermaster
+produces the other. The
 Log keeps your seed, your gold, your cargo, your hull and crew, your
 chart, your fragments, and every port you've ever called at. It also
 remembers your **greatest gold haul** — shown as BEST on the seed screen,
