@@ -935,6 +935,105 @@ def f3_hud_stats_line():
     pb.stop()
     print("F3 HUD hull/gold/fragments line: OK")
 
+# ----------------- R20: crew speeds the cannon reload
+
+def r20_crew_speeds_reload():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    mem[syms["wCrew"]] = 20
+    pb.button_press("a")
+    fired = False
+    for _ in range(5):                   # a press can land between joypad reads
+        pb.tick()
+        if mem[syms["wBallPActive"]]:
+            fired = True
+            break
+    pb.button_release("a")
+    assert fired, "cannon didn't fire"
+    # 30 - 20/2 = 20, minus the same-frame cooldown tick in UpdateCombat
+    assert mem[syms["wFireCool"]] == 19, \
+        f"cooldown {mem[syms['wFireCool']]}, want 19 (30 - crew/2 - tick)"
+    for _ in range(60):
+        pb.tick()                        # ball expires, cooldown drains
+    mem[syms["wCrew"]] = 0
+    pb.button_press("a")
+    fired = False
+    for _ in range(5):
+        pb.tick()
+        if mem[syms["wBallPActive"]]:
+            fired = True
+            break
+    pb.button_release("a")
+    assert fired, "second shot didn't fire"
+    assert mem[syms["wFireCool"]] == 29, \
+        f"cooldown {mem[syms['wFireCool']]}, want 29 (no crew)"
+    pb.stop()
+    print("R20 crew speeds cannon reload: OK")
+
+# ----------------- R21: the final fleet escalates per wave
+
+def r21_final_fleet_escalates():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    spot = find_water(s16, 45, 70, 140, 150,
+                      lambda x, y: tile(x + 12, y, s16) < 3
+                      and tile(x - 12, y, s16) < 3
+                      and tile(x, y + 12, s16) < 3
+                      and tile(x, y - 12, s16) < 3)
+    assert spot, "no open-water spot"
+    assert teleport(pb, *spot), "teleport never stuck"
+    mem[syms["wEnemyActive"]] = 0        # the teleport may have rolled a pirate
+    mem[syms["wBallEActive"]] = 0
+    set16(mem, "wStormT", 0)
+    mem[syms["wFinal"]] = 1
+    for _ in range(300):
+        pb.tick()
+        if mem[syms["wEnemyActive"]] and mem[syms["wIsGuardian"]]:
+            break
+    assert mem[syms["wEnemyActive"]], "final wave 1 never spawned"
+    assert mem[syms["wEnemyHP"]] == 6, \
+        f"wave 1 HP {mem[syms['wEnemyHP']]}, want 6 (GUARD_HP + 1)"
+    cool = mem[syms["wEnemyFireCool"]]
+    assert 40 <= cool <= 42, f"wave 1 cooldown {cool}, want ~42 (50 - 8)"
+    pb.stop()
+    print("R21 final fleet escalates per wave: OK")
+
+# ----------------- R22: a won voyage is tagged on the seed screen
+
+def r22_treasure_won_tag():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    mem[syms["wWon"]] = 1
+    mem[syms["wHasSave"]] = 1
+    press3(pb, "b")                        # arm quit confirm
+    for _ in range(5):
+        pb.tick()
+    press3(pb, "b")                        # confirm
+    assert wait_state(pb, 0), "did not return to the editor"
+    line = read_text(mem, 0x9800 + 7 * 32 + 5, 12)
+    assert line == "TREASURE WON", f"won tag {line!r}"
+    assert mem[0x9800 + 7 * 32 + 17] == 67, "missing '!'"
+    pb.stop()
+    print("R22 seed screen TREASURE WON tag: OK")
+
+# ----------------- R23: the chart shows the voyage seed
+
+def r23_chart_shows_seed():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)                           # default seed DEADBEEF
+    press3(pb, "start")
+    assert wait_state(pb, 3), "chart didn't open"
+    row = [mem[0x9800 + 17 * 32 + 4 + i] for i in range(13)]
+    want = [58, 44, 44, 43, 39, 29, 30, 26, 29, 27, 30, 30, 31]  # SEED DEADBEEF
+    assert row == want, f"chart seed row {row}, want {want}"
+    pb.stop()
+    print("R23 chart shows the voyage seed: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -942,6 +1041,8 @@ if __name__ == "__main__":
                r13_boot_clears_state, r14_dig_no_cannon, r15_save_sets_has_save,
                r16_boot_clears_fire_cooldowns, r17_tavern_port_scan,
                r18_wreck_respawn_redraw, r19_cgb_streaming_no_drops,
+               r20_crew_speeds_reload, r21_final_fleet_escalates,
+               r22_treasure_won_tag, r23_chart_shows_seed,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()

@@ -160,14 +160,20 @@ assert mem[syms["wFinal"]] >= 1, "final battle not triggered"
 press("a", 60)
 assert mem[syms["wState"]] == 2
 
-# wave 1 should spawn shortly
-for _ in range(10):
-    pb.tick()
-assert mem[syms["wEnemyActive"]] == 1 and mem[syms["wIsGuardian"]] == 1, "wave 1 didn't spawn"
-print("final wave 1 spawned")
-
-# sink both waves; each sink may instantly spawn the next
-for wave in (1, 2):
+# sink all four waves; each sink may instantly spawn the next. Waves
+# escalate: wave k has 5+k HP (checked before weakening) and faster guns.
+for wave in (1, 2, 3, 4):
+    # wave k should be active (spawn retries each frame if it lands on land)
+    for _ in range(120):
+        pb.tick()
+        if mem[syms["wEnemyActive"]]:
+            break
+    assert mem[syms["wEnemyActive"]] == 1 and mem[syms["wIsGuardian"]] == 1, \
+        f"final wave {wave} didn't spawn"
+    want_hp = 5 + wave
+    assert mem[syms["wEnemyHP"]] == want_hp, \
+        f"wave {wave} HP {mem[syms['wEnemyHP']]}, want {want_hp}"
+    print(f"final wave {wave} spawned (HP {want_hp})")
     mem[syms["wEnemyHP"]] = 1
     ex, ey = w16("wEnemyX"), w16("wEnemyY")
     set16("wBallPX", ex)
@@ -182,6 +188,8 @@ for wave in (1, 2):
     # wait for the next wave / victory
     for _ in range(30):
         pb.tick()
+
+print("final fleet sunk: 4 escalating waves")
 
 print("state:", mem[syms["wState"]], "(6 = victory)")
 assert mem[syms["wState"]] == 6, "no victory!"
