@@ -113,7 +113,14 @@ ISLE_NAMES = ["LIBERTALIA", "WHYDAH DEEP", "KRAKEN SKERRY", "THE LOCKER",
 # ---------------------------------------------------------------- helpers
 
 def boot(garbage=False):
-    pb = PyBoy(ROM, window="null")
+    # Boot a save-free copy of the ROM: PyBoy loads <rom>.ram next to the
+    # ROM path and writes it back on stop(), so reusing one path makes every
+    # later boot inherit an earlier boot's save. A fresh copy per boot keeps
+    # every test on the deterministic default-seed boot, like CI.
+    import shutil, tempfile
+    path = str(Path(tempfile.mkdtemp()) / "pf.gb")
+    shutil.copy(ROM, path)
+    pb = PyBoy(path, window="null")
     pb.set_emulation_speed(0)
     if garbage:
         # simulate power-on WRAM garbage BEFORE the first tick (PyBoy zeroes
@@ -154,6 +161,38 @@ def new_game(pb, seed=None):
     assert mem[syms["wState"]] == 2, "not sailing after new game"
     for _ in range(30):
         pb.tick()
+
+def wait_state(pb, state, frames=180):
+    """Tick until wState == state (screen rebuilds take several frames)."""
+    mem = pb.memory
+    for _ in range(frames):
+        pb.tick()
+        if mem[syms["wState"]] == state:
+            return True
+    return False
+
+
+def press3(pb, btn):
+    """Hold a button for 3 frames. A 1-tick press can land between the
+    game's joypad reads (PyBoy writes hit mid-frame) and vanish."""
+    pb.button_press(btn)
+    for _ in range(3):
+        pb.tick()
+    pb.button_release(btn)
+
+
+def teleport(pb, tx, ty, tries=8):
+    """Teleport to a tile, surviving torn mid-frame position writes (the
+    collision check can revert a torn write). Returns success."""
+    mem = pb.memory
+    for _ in range(tries):
+        set16(mem, "wPosX", (tx * 8) << 4)
+        set16(mem, "wPosY", (ty * 8) << 4)
+        pb.tick()
+        if (w16(mem, "wShipX") >> 3, w16(mem, "wShipY") >> 3) == (tx, ty):
+            return True
+    return False
+
 
 def w16(mem, n):
     return mem[syms[n]] | mem[syms[n] + 1] << 8
@@ -415,6 +454,35 @@ def r8_final_wave_returned():
 
 # ------------------------------------------------------ R9/R10: tavern rumors
 
+def find_dockable_port(s16):
+    """A port district with a beach the game will actually accept: some
+    water tile whose FIRST land neighbor in TryDock's N,S,W,E order is a
+    beach inside this district. Seed-independent (unlike the old
+    hardcoded (10,34), which is not a port district under DEADBEEF)."""
+    for dy in range(72):
+        for dx in range(80):
+            if not has_port(dx, dy, s16):
+                continue
+            for ty in range(dy * 4, dy * 4 + 4):
+                for tx in range(dx * 4, dx * 4 + 4):
+                    if tile(tx, ty, s16) < 3:
+                        continue
+                    for ddx, ddy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                        nx, ny = tx + ddx, ty + ddy
+                        if not (0 <= nx < 320 and 0 <= ny < 288):
+                            continue
+                        if tile(nx, ny, s16) >= 3:
+                            continue
+                        for pdx, pdy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+                            if not (0 <= nx + pdx < 320 and 0 <= ny + pdy < 288):
+                                continue
+                            if tile(nx + pdx, ny + pdy, s16) >= 3:
+                                if (nx + pdx, ny + pdy) == (tx, ty):
+                                    return (dx, dy)
+                                break
+    raise AssertionError("no dockable port district in this sea")
+
+
 def dock_at_district(pb, s16, dx, dy):
     """Teleport next to a beach in port district (dx,dy) and dock."""
     mem = pb.memory
@@ -424,13 +492,21 @@ def dock_at_district(pb, s16, dx, dy):
                 continue
             for ddx, ddy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
                 nx, ny = tx + ddx, ty + ddy
+                if not (0 <= nx < 320 and 0 <= ny < 288):
+                    continue
                 if tile(nx, ny, s16) >= 3:
                     continue
                 set16(mem, "wPosX", (nx * 8) << 4)
                 set16(mem, "wPosY", (ny * 8) << 4)
                 for _ in range(5):
                     pb.tick()
-                press(pb, "a", 30)
+                # a 1-tick press can land between joypad reads: hold for 3
+                pb.button_press("a")
+                for _ in range(3):
+                    pb.tick()
+                pb.button_release("a")
+                for _ in range(30):
+                    pb.tick()
                 if mem[syms["wState"]] == 4:
                     return
     raise AssertionError(f"no dockable beach in district ({dx},{dy})")
@@ -440,7 +516,7 @@ def r9_r10_tavern():
     mem = pb.memory
     new_game(pb)
     s16 = seed16(mem)
-    dock_at_district(pb, s16, 10, 34)       # the port test_m3 uses
+    dock_at_district(pb, s16, *find_dockable_port(s16))
     press(pb, "down", 2)
     press(pb, "down", 2)
     press(pb, "a", 30)                       # TAVERN
@@ -506,7 +582,7 @@ def r11_r12_menu_and_gold():
     mem = pb.memory
     new_game(pb)
     s16 = seed16(mem)
-    dock_at_district(pb, s16, 10, 34)
+    dock_at_district(pb, s16, *find_dockable_port(s16))
     press(pb, "up", 5)
     assert mem[syms["wPortMenu"]] == 5, \
         f"UP from top item -> {mem[syms['wPortMenu']]}, want 5"
@@ -558,13 +634,14 @@ def r14_dig_no_cannon():
         if spot:
             break
     assert spot, "no beach-adjacent water in isle 0's cell"
-    set16(mem, "wPosX", (spot[0] * 8) << 4)
-    set16(mem, "wPosY", (spot[1] * 8) << 4)
-    for _ in range(5):
+    assert teleport(pb, *spot), "teleport never stuck"
+    for _ in range(4):
         pb.tick()
     assert (mem[syms["wShipCX"]], mem[syms["wShipCY"]]) == (ix, iy)
     mem[syms["wGuardMask"]] = 1          # isle 0's guardian already sunk
-    press(pb, "a", 30)                   # dig up the fragment
+    press3(pb, "a")                      # dig up the fragment
+    for _ in range(30):
+        pb.tick()
     assert mem[syms["wState"]] == 5, f"state {mem[syms['wState']]}, want DIG"
     assert not mem[syms["wBallPActive"]], "digging fired a cannonball"
     pb.stop()
@@ -573,24 +650,20 @@ def r14_dig_no_cannon():
 # ---------------------- R15: SaveGame sets wHasSave (continue without reset)
 
 def r15_save_sets_has_save():
-    import shutil, tempfile
-    # a ROM path with no .ram next to it: guaranteed no-save boot
-    tmp = Path(tempfile.mkdtemp()) / "pf_nosave.gb"
-    shutil.copy(ROM, tmp)
-    pb = PyBoy(str(tmp), window="null")
-    pb.set_emulation_speed(0)
-    for _ in range(150):
-        pb.tick()
+    pb = boot()                       # save-free boot (see boot())
     mem = pb.memory
     assert mem[syms["wHasSave"]] == 0, "fresh cart reported a save"
     new_game(pb)
     s16 = seed16(mem)
-    dock_at_district(pb, s16, 10, 34)     # autosaves on dock
+    dock_at_district(pb, s16, *find_dockable_port(s16))  # autosaves on dock
     assert mem[syms["wHasSave"]] == 1, "wHasSave not set after autosave"
-    press(pb, "b", 30)                    # set sail
-    press(pb, "b", 5)                     # arm quit confirm
-    press(pb, "b", 30)                    # confirm: quit to the editor
-    assert mem[syms["wState"]] == 0, "did not return to the editor"
+    press3(pb, "b")                      # set sail
+    assert wait_state(pb, 2), "never set sail"
+    press3(pb, "b")                       # arm quit confirm
+    for _ in range(5):                    # B must be seen released...
+        pb.tick()
+    press3(pb, "b")                       # ...before the confirming edge
+    assert wait_state(pb, 0), "did not return to the editor"
     hint = read_text(mem, 0x9800 + 5 * 32 + 5, 11)
     assert hint == "A  NEW GAME", f"editor hint {hint!r}, want 'A  NEW GAME'"
     pb.stop()
@@ -612,16 +685,21 @@ def f1_quit_confirm():
     pb = boot()
     mem = pb.memory
     new_game(pb)
-    press(pb, "b", 5)
+    press3(pb, "b")
+    for _ in range(5):
+        pb.tick()
     assert mem[syms["wState"]] == 2, "single B press quit without confirm"
     assert mem[syms["wQuitCfm"]] > 0, "confirm window not armed"
     for _ in range(200):                  # let the window expire
         pb.tick()
     assert mem[syms["wQuitCfm"]] == 0, "confirm window never expired"
     assert mem[syms["wState"]] == 2, "expired confirm still quit"
-    press(pb, "b", 5)                     # re-arm
-    press(pb, "b", 10)                    # confirm
-    assert mem[syms["wState"]] == 0, "second B press did not quit"
+    press3(pb, "b")                       # re-arm
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wQuitCfm"]] > 0, "confirm window not re-armed"
+    press3(pb, "b")                       # confirm
+    assert wait_state(pb, 0), "second B press did not quit"
     pb.stop()
     print("F1 B-at-sea quit confirm: OK")
 
