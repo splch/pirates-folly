@@ -27,6 +27,8 @@ wAnimPhase: db
 wHudDigits: ds 8            ; TX (3), TY (3), SPD (2)
 wQuitCfm::  db              ; B-quit confirm window (frames left)
 wHudRow1:   ds 15           ; window row 1: stats line / quit message
+wShakeT::   db              ; screen-shake frames (set on hull damage)
+wHitFlashT:: db             ; BGP damage-flash frames
 
 SECTION "Shadow OAM", WRAM0, ALIGN[8]
 wShadowOAM:: ds 160
@@ -72,6 +74,8 @@ EnterSail::
     ld [wStagePend], a
     ld [wDmgCool], a
     ld [wQuitCfm], a
+    ld [wShakeT], a
+    ld [wHitFlashT], a
     ld hl, wHudRow1            ; first SailVBlank runs before the first
     ld b, 15                   ; SailHud: don't show power-on garbage
 .clrRow1
@@ -209,6 +213,13 @@ SetupHud:
 ; Per-frame VBlank work (called first thing after halt; we are in Mode 1)
 ; ---------------------------------------------------------------------------
 SailVBlank::
+    ; damage flash beats the storm palette
+    ld a, [wHitFlashT]
+    and a
+    jr z, .noFlash
+    ld a, $1B                      ; inverted burst: you got hit
+    jr .bgp
+.noFlash
     ; storm palette override
     ld a, [wStormT]
     ld b, a
@@ -221,7 +232,24 @@ SailVBlank::
     ld a, $E4
 .bgp
     ldh [rBGP], a
+    ; screen shake while wShakeT is live (alternate SCX +-2 every 2 frames)
     ld a, [wCamX]
+    ld b, a
+    ld a, [wShakeT]
+    and a
+    jr z, .steady
+    and 2
+    jr z, .shakeL
+    ld a, b
+    add 2
+    jr .scx
+.shakeL
+    ld a, b
+    sub 2
+    jr .scx
+.steady
+    ld a, b
+.scx
     ldh [rSCX], a
     ld a, [wCamY]
     ldh [rSCY], a
@@ -336,6 +364,19 @@ UpdateSail::
     dec a
     ld [wQuitCfm], a
 .noCfm
+    ; juice timers
+    ld a, [wShakeT]
+    and a
+    jr z, .noShakeT
+    dec a
+    ld [wShakeT], a
+.noShakeT
+    ld a, [wHitFlashT]
+    and a
+    jr z, .noHitT
+    dec a
+    ld [wHitFlashT], a
+.noHitT
     ; A = dock if possible, else fire cannons
     ld a, [wJoyNew]
     and PADF_A
@@ -657,6 +698,10 @@ SailCollide:
     ret nz
     ld a, 45
     ld [wDmgCool], a
+    ld a, 8
+    ld [wShakeT], a                ; felt, not just heard
+    ld a, 6
+    ld [wHitFlashT], a
     ld a, [wHull]
     and a
     ret z
