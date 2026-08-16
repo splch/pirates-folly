@@ -397,6 +397,11 @@ UpdateSail::
     call MarkExplored
     and a
     jr z, .notNew
+    dec a
+    jr z, .firstChart
+    call RevisitRoll               ; re-entered charted cell: reduced odds
+    jr .notNew
+.firstChart
     call SpawnCheck                ; newly charted cell: roll encounters
 .notNew
     call CellWatch                 ; isle guardians / final battle

@@ -5,6 +5,7 @@
 
 INCLUDE "hardware.inc"
 INCLUDE "defs.inc"
+INCLUDE "text.inc"
 
 SECTION "World WRAM", WRAM0
 wStagePend::    db          ; bit 0: column pending, bit 1: row pending
@@ -52,6 +53,8 @@ wPortCells::    ds 32       ; cells with a docked-at port (chart markers)
 wMarkTX::       dw          ; MarkExplored: ship tile last processed
 wMarkTY::       dw          ; ($FFFF = invalid: after boot/spawn jumps)
                             ; NOTE: must stay right after wExplored (cleared together)
+wNewCX:         db          ; MarkExplored cell-under-ship candidates
+wNewCY:         db
 
 SECTION "World gen", ROMX, BANK[3]
 
@@ -286,6 +289,8 @@ TileAttr:
     ret z                       ; blank -> UI palette 0
     cp TILE_PORT
     jr z, .ui                   ; port marker -> ink
+    cp TILE_LET_X
+    jr z, .ui                   ; chart X marker -> ink
     cp TILE_DOCK
     jr z, .sand                 ; dock -> wood (sand palette)
     cp TILE_SAND
@@ -1056,6 +1061,7 @@ CellBitPtr:
 ; Early-out while the ship stays on its tile: the cell bit was set when
 ; the tile was entered, so only recompute on a tile crossing (the two
 ; divisions below are the expensive part).
+; out: a = 1 newly charted cell, 2 = re-entered charted cell, 0 = no move
 MarkExplored::
     ld a, [wShipX]
     ld l, a
@@ -1099,10 +1105,25 @@ MarkExplored::
     push de                        ; ty
     ld b, 20
     call DivHLb                    ; a = cell x (clobbers bc, hl; keeps de)
-    ld [wShipCX], a
+    ld [wNewCX], a
     pop hl                         ; hl = ty
     ld b, 18
     call DivHLb                    ; a = cell y
+    ld [wNewCY], a
+    ; a tile crossing inside the ship's own cell changes nothing
+    ld hl, wShipCY
+    cp [hl]
+    jr nz, .cellEntry
+    ld a, [wNewCX]
+    ld hl, wShipCX
+    cp [hl]
+    jr nz, .cellEntry
+    xor a
+    ret
+.cellEntry
+    ld a, [wNewCX]
+    ld [wShipCX], a
+    ld a, [wNewCY]
     ld [wShipCY], a
     ; set bit (cy*16+cx) in wExplored
     swap a                         ; cy*16 (cy <= 15)
@@ -1110,18 +1131,18 @@ MarkExplored::
     add a, [hl]
     ld hl, wExplored
     call CellBitPtr
-    ; a = mask, hl = byte ptr; return a=1 iff newly explored
+    ; a = mask, hl = byte ptr
     ld b, a
     ld a, [hl]
     and b
-    jr nz, .old
+    jr nz, .revisit
     ld a, [hl]
     or b
     ld [hl], a
-    ld a, 1
+    ld a, 1                        ; newly charted
     ret
-.old
-    xor a
+.revisit
+    ld a, 2                        ; re-entered an already-charted cell
     ret
 
 ; Mark the port at beach tile (wBeachX, wBeachY) on the chart bitmap.
@@ -1191,8 +1212,21 @@ RenderChart:
     jr z, .blank
     call TestPortCell              ; docked-at port? mark it
     and a
-    jr z, .sample
+    jr z, .isle
     ld a, TILE_PORT
+    jr .put
+.isle
+    ld a, [wChX]
+    ld b, a
+    ld a, [wChY]
+    ld c, a
+    call IsIsleCell                ; a = isle index or $FF
+    cp $FF
+    jr z, .sample
+    call TestFrag
+    and a
+    jr z, .sample
+    ld a, TILE_LET_X               ; fragment dug: X marks the spot
     jr .put
 .sample
     ; sample cell center tile
@@ -1277,6 +1311,36 @@ ChartMarker:
     ld [$FE07], a
     ret
 
+; A fully-inked chart earns the cartographer's bounty, once per voyage.
+; LCD off. clobbers a, b, h, l (and PlaySfx's)
+ChartBounty:
+    ld hl, wExplored
+    ld b, 32
+.full
+    ld a, [hli]
+    cpl
+    and a
+    ret nz                         ; still blank parchment somewhere
+    dec b
+    jr nz, .full
+    ld a, [wCartDone]
+    and a
+    ret nz                         ; already awarded this voyage
+    inc a
+    ld [wCartDone], a
+    ld a, [wGold]
+    add LOW(500)
+    ld [wGold], a
+    ld a, [wGold+1]
+    adc HIGH(500)
+    ld [wGold+1], a
+    ld hl, StrCartDone
+    ld de, $9800                   ; row 0: free above the 16x16 chart
+    call PrintStr
+    ld a, SFX_COIN
+    call PlaySfx
+    ret
+
 ; Print the voyage seed on the chart's free bottom row ("SEED xxxxxxxx").
 ; Share a seed, share a world — it should be readable without quitting.
 ; LCD off. clobbers a, b, d, e, h, l
@@ -1302,6 +1366,10 @@ ChartSeed:
     jr nz, .dig
     ret
 
+PUSHS "Chart strings", ROMX, BANK[3]
+StrCartDone: db "CHART COMPLETE! 500G", 0
+POPS
+
 ; Clear all 40 OAM entries. LCD must be off.
 ClearOAM::
     ld hl, $FE00
@@ -1321,6 +1389,7 @@ EnterChart::
     call RenderChart
     call ChartMarker
     call ChartSeed
+    call ChartBounty
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01 | LCDC_OBJ_ON
     ldh [rLCDC], a
     ld a, STATE_CHART

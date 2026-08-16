@@ -67,7 +67,13 @@ EntryPoint:
     jr z, .noSave
     call SplitSeedNibbles        ; show the loaded seed in the editor
     call ComputeIsles            ; isles are derived, never saved
+    jr .saveDone
 .noSave
+    xor a                        ; fresh cart: no best haul, no chart bounty
+    ld [wBestGold], a
+    ld [wBestGold+1], a
+    ld [wCartDone], a
+.saveDone
 
     ; power-on WRAM is random on hardware (PyBoy zeroes it, emulators like
     ; binjgb do not): clear volatile combat/storm state so no phantom
@@ -93,6 +99,8 @@ EntryPoint:
     ld [wMarkTX+1], a
     ld [wMarkTY], a
     ld [wMarkTY+1], a
+    ld [wShipCX], a              ; cell cache invalid too: the first
+    ld [wShipCY], a              ; MarkExplored always counts as a cell entry
 
     call SoundInit
     call LoadTiles
@@ -471,10 +479,25 @@ DrawSeedHints::
     call PrintStr
     ld a, [wWon]
     and a
-    ret z
+    jr z, .noTag
     ld hl, StrWonTag
     ld de, $9800 + 7 * 32 + 5
     call PrintStr
+.noTag
+    ld hl, StrBest
+    ld de, $9800 + 8 * 32 + 5
+    call PrintStr
+    ld a, [wBestGold+1]
+    ld h, a
+    ld a, [wBestGold]
+    ld l, a
+    ld de, $9800 + 8 * 32 + 10
+    call PrintDec4
+    ld a, TILE_SPACE
+    ld [de], a
+    inc de
+    ld a, TILE_A + 6                 ; 'G'
+    ld [de], a
     ret
 
 ; LCD-off redraw of the editor screen, LCD back on.
@@ -530,6 +553,7 @@ InitNewGame:
     ld [wFinal], a
     ld [wWon], a
     ld [wIsGuardian], a
+    ld [wCartDone], a            ; bounty is per-voyage (wBestGold persists)
     ld hl, wExplored             ; + wPortCells (contiguous, 64 B total)
     ld b, 64
 .clr
@@ -592,6 +616,7 @@ DefaultSeedNibs:
 StrNewGame:  db "A  NEW GAME", 0
 StrLoadGame: db "START LOAD", 0
 StrWonTag:   db "TREASURE WON!", 0
+StrBest:     db "BEST ", 0
 StrTitle:    db "PIRATES FOLLY", 0
 StrTitleSub1: db "A PROCEDURAL", 0
 StrTitleSub2: db "PIRATE VOYAGE", 0

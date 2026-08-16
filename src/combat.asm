@@ -99,6 +99,32 @@ SpawnCheck::
     call c, StartStorm
     ret
 
+; Re-entry roll for an already-charted cell: reduced odds (~1/4 of the
+; new-cell rates), drawn from the stateful RNG — the cell hash is constant
+; per cell, so hash-based re-rolls would be deterministic (a cell that
+; either always or never spawns).
+RevisitRoll::
+    ld a, [wEnemyActive]
+    and a
+    ret nz                       ; one enemy at a time
+    ld a, [wShipCX]
+    ld b, a
+    ld a, [wShipCY]
+    ld c, a
+    call IsIsleCell
+    cp $FF
+    ret nz                       ; isle waters are guardian territory: no rolls
+    call Rand16
+    push hl
+    ld a, l
+    cp 12                          ; pirate ~4.7%
+    call c, SpawnEnemy
+    pop hl
+    ld a, h
+    cp 3                           ; storm ~1.2%
+    call c, StartStorm
+    ret
+
 ; Spawn a pirate ship near the player, in open water. 8 candidate offsets:
 ; far ring first, near ring second (guardians near big islands need options;
 ; callers retry on later frames when the pick lands on land).
@@ -208,10 +234,6 @@ SpawnEnemy::
     ; activate
     ld a, 1
     ld [wEnemyActive], a
-    ld a, PIRATE_HP
-    ld [wEnemyHP], a
-    ld a, PIRATE_FIRECOOL
-    ld [wEnemyFireCool], a
     xor a
     ld [wIsGuardian], a            ; normal pirate, not a guardian
     ld [wNoLOS], a
@@ -235,6 +257,31 @@ SpawnEnemy::
     ld [wEnemyX], a
     ld a, h
     ld [wEnemyX+1], a
+    ; the seas grow bolder as the chart assembles: +1 HP at 3 and 6
+    ; fragments, volleys 5 frames quicker per fragment. Guardians get
+    ; their own stats: SpawnGuardian overrides both right after this.
+    call CountFrags                ; a = fragments (0..9); clobbers c, d, h, l
+    ld b, a
+    ld a, PIRATE_HP
+    ld c, a
+    ld a, b
+    cp 3
+    jr c, .hpSet
+    inc c
+    cp 6
+    jr c, .hpSet
+    inc c
+.hpSet
+    ld a, c
+    ld [wEnemyHP], a
+    ld a, b
+    add a
+    add a
+    add b                          ; 5 * fragments
+    ld b, a
+    ld a, PIRATE_FIRECOOL
+    sub b                          ; >= 30 even at 9 fragments
+    ld [wEnemyFireCool], a
     ret
 
 ; ---------------------------------------------------------------------------

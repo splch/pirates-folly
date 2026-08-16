@@ -26,6 +26,8 @@ wLastPortDX:: db
 wLastPortDY:: db
 wHasSave::  db
 wNeedSpawn:: db
+wBestGold:: dw          ; largest gold haul ever held (persists across voyages)
+wCartDone:: db          ; chart-completion bounty awarded this voyage
 wNpR:       db          ; nearest-port scan state
 wNpX:       db
 wNpY:       db
@@ -1257,7 +1259,7 @@ PrintPortName:
 
 DEF SAVE_MAGIC_0 EQU $53
 DEF SAVE_MAGIC_1 EQU $46
-DEF SAVE_VERSION EQU 3          ; v3: + wPortCells (32 B). v2 saves rejected.
+DEF SAVE_VERSION EQU 4          ; v4: + wBestGold, wCartDone. v3 saves rejected.
 
 ; Copy b bytes from de to hl, advancing both. clobbers a, b, de, hl
 CopyToSRAM:
@@ -1270,6 +1272,24 @@ CopyToSRAM:
 
 ; Save game state to cart RAM.
 SaveGame::
+    ; best haul: keep the largest gold pile this cart has ever held
+    ld a, [wGold]
+    ld l, a
+    ld a, [wGold+1]
+    ld h, a
+    ld a, [wBestGold+1]
+    cp h
+    jr c, .newBest
+    jr nz, .bestDone
+    ld a, [wBestGold]
+    cp l
+    jr nc, .bestDone
+.newBest
+    ld a, h
+    ld [wBestGold+1], a
+    ld a, l
+    ld [wBestGold], a
+.bestDone
     ld a, $0A
     ld [$0000], a                  ; RAM enable
     ld hl, $A000
@@ -1281,8 +1301,9 @@ SaveGame::
     ld [hli], a
     xor a
     ld [hli], a                    ; checksum placeholder
-    ; data layout ($A004..$A05B): seed(4) pos(4) gold+hull+crew+cargo(8)
-    ; explored(32) lastport(2) fragmask+guardmask(4) final+won(2) portcells(32)
+    ; data layout ($A004..$A05E): seed(4) pos(4) gold+hull+crew+cargo(8)
+    ; explored(32) lastport(2) fragmask+guardmask(4) final+won(2)
+    ; portcells(32) bestgold(2) cartdone(1)
     ld de, wSeed
     ld b, 4
     call CopyToSRAM
@@ -1307,9 +1328,15 @@ SaveGame::
     ld de, wPortCells              ; $A03C..$A05B
     ld b, 32
     call CopyToSRAM
-    ; checksum = sum of $A004..$A05B
+    ld de, wBestGold
+    ld b, 2
+    call CopyToSRAM
+    ld de, wCartDone
+    ld b, 1
+    call CopyToSRAM
+    ; checksum = sum of $A004..$A05E
     ld hl, $A004
-    ld c, 88
+    ld c, 91
     xor a
 .sum
     add a, [hl]
@@ -1348,7 +1375,7 @@ LoadGame::
     jp nz, .fail
     ; checksum
     ld hl, $A004
-    ld c, 88
+    ld c, 91
     xor a
 .sum
     add a, [hl]
@@ -1383,6 +1410,12 @@ LoadGame::
     call CopyFromSRAM
     ld de, wPortCells
     ld b, 32
+    call CopyFromSRAM
+    ld de, wBestGold
+    ld b, 2
+    call CopyFromSRAM
+    ld de, wCartDone
+    ld b, 1
     call CopyFromSRAM
     call FoldSeed16                ; wSeed16 first: ComputeIsles hashes with it
     call ComputeIsles              ; isles are derived, never saved
