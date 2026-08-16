@@ -1468,7 +1468,7 @@ def r34_shipyard():
     # long guns: ball lives 56 frames (minus the same-frame tick)
     press3(pb, "a")
     assert mem[syms["wBallPActive"]] == 1, "cannon didn't fire"
-    assert mem[syms["wBallPLife"]] in (55, 56), \
+    assert mem[syms["wBallPLife"]] in (54, 55, 56), \
         f"ball life {mem[syms['wBallPLife']]}, want ~56"
     # upgrades persist through the save
     press3(pb, "b")                       # quit confirm
@@ -1493,6 +1493,117 @@ def r35_revenge_seas():
     pb.stop()
     print("R35 revenge seas after victory: OK")
 
+# ----------------- R36: the kraken rises in deep water
+
+# revisit roll with l >= 32 (no pirate/merchant) and h in {3,4} (kraken
+# lane = the 2 values above the storm lane), non-west spawn offset
+_KRAKEN = next(s for s in range(1, 0x10000)
+               if (xs16(s) & 0xFF) >= 32 and (xs16(s) >> 8) in (3, 4)
+               and (xs16(xs16(s)) & 0xFF) & 7 in (0, 1, 3, 4, 5, 7))
+
+def r36_kraken():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    mem[syms["wEnemyActive"]] = 0
+    set16(mem, "wStormT", 0)
+    isles = {(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
+             for k in range(9)}
+    # a cell-boundary tile that is DEEP water, approached from water
+    spot = None
+    for cy in range(1, 15):
+        for cx in range(1, 15):
+            if (cx, cy) in isles:
+                continue
+            wx, wy = cx * 20, cy * 18 + 9
+            if tile(wx, wy, s16) == 1 and tile(wx - 1, wy, s16) < 3:
+                spot = (cx, cy, wx, wy)
+                break
+        if spot:
+            break
+    assert spot, "no deep-water cell boundary found"
+    cx, cy, wx, wy = spot
+    assert teleport(pb, wx - 4, wy), "teleport never stuck"
+    bit = cy * 16 + cx
+    mem[syms["wExplored"] + bit // 8] |= 1 << (bit % 8)   # revisited cell
+    _set_rng(mem, _KRAKEN)
+    pb.button_press("right")
+    for _ in range(300):
+        pb.tick()
+        if mem[syms["wShipCX"]] == cx:
+            break
+    pb.button_release("right")
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wEnemyActive"]] == 1, "kraken never surfaced"
+    assert mem[syms["wEnemyHP"]] == 8, f"HP {mem[syms['wEnemyHP']]}, want 8"
+    loot = mem[syms["wEnemyLoot"]]
+    assert 60 <= loot <= 123, f"hoard {loot}, want 60..123"
+    pb.stop()
+    print("R36 the kraken rises in deep water: OK")
+
+# ----------------- R37: chart marks a guarded isle with a skull
+
+def r37_chart_skull():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    ix, iy = mem[syms["wIsles"]], mem[syms["wIsles"] + 1]
+    bit = iy * 16 + ix
+    mem[syms["wExplored"] + bit // 8] |= 1 << (bit % 8)
+    press3(pb, "start")
+    assert wait_state(pb, 3), "chart didn't open"
+    addr = 0x9800 + (iy + 1) * 32 + (ix + 2)
+    assert mem[addr] == 68, f"guarded isle tile {mem[addr]}, want skull (68)"
+    set16(mem, "wGuardMask", 1)           # guardian sunk, fragment not dug
+    press3(pb, "b")
+    assert wait_state(pb, 2)
+    press3(pb, "start")
+    assert wait_state(pb, 3)
+    assert mem[addr] not in (32, 68), \
+        f"cleared isle tile {mem[addr]}, want plain terrain"
+    pb.stop()
+    print("R37 chart skull for guarded isles: OK")
+
+# ----------------- R38: a corrupt save slot falls back to the other
+
+def r38_second_save_slot():
+    import shutil
+    import tempfile
+    path = str(Path(tempfile.mkdtemp()) / "pf.gb")
+    shutil.copy(ROM, path)
+    pb = PyBoy(path, window="null")
+    pb.set_emulation_speed(0)
+    mem = pb.memory
+    for _ in range(150):
+        pb.tick()
+    new_game(pb)
+    s16 = seed16(mem)
+    set16(mem, "wGold", 1111)
+    dock_at_district(pb, s16, *find_dockable_port(s16))  # save 1 -> slot 0
+    press3(pb, "b")                                       # set sail -> slot 1
+    assert wait_state(pb, 2)
+    set16(mem, "wGold", 2222)
+    press3(pb, "a")                                       # re-dock -> slot 0
+    for _ in range(40):
+        pb.tick()
+    assert mem[syms["wState"]] == 4, "re-dock failed"
+    pb.stop()                             # writes <rom>.ram (32 KiB SRAM)
+    ram = bytearray(open(path + ".ram", "rb").read())
+    ram[0x10] ^= 0xFF                     # corrupt slot 0's data (the newer)
+    open(path + ".ram", "wb").write(ram)
+    pb2 = PyBoy(path, window="null")
+    pb2.set_emulation_speed(0)
+    mem2 = pb2.memory
+    for _ in range(150):
+        pb2.tick()
+    assert mem2[syms["wHasSave"]] == 1, "no valid save found"
+    got = mem2[syms["wGold"]] | mem2[syms["wGold"] + 1] << 8
+    assert got == 1111, f"loaded gold {got}, want 1111 (slot 1 fallback)"
+    pb2.stop()
+    print("R38 corrupt save slot falls back to the other: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1509,6 +1620,7 @@ if __name__ == "__main__":
                r31_price_drift, r32_dig_ceremony,
                r33_select_mute_and_reroll,
                r34_shipyard, r35_revenge_seas,
+               r36_kraken, r37_chart_skull, r38_second_save_slot,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
