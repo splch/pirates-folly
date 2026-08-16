@@ -1307,6 +1307,30 @@ UpdateBalls:
     dec a
     ld [wBallELife], a
     jp z, .killE                 ; SFX code grew this branch past jr range
+    ; land check, same as the player's ball: nobody shoots through land
+    ld a, [wBallEX]
+    ld l, a
+    ld a, [wBallEX+1]
+    ld h, a
+    REPT 7
+    srl h
+    rr l
+    ENDR                           ; ball tile x (12.4 -> tile = >>7)
+    ld c, l
+    ld b, h
+    ld a, [wBallEY]
+    ld l, a
+    ld a, [wBallEY+1]
+    ld h, a
+    REPT 7
+    srl h
+    rr l
+    ENDR
+    ld e, l
+    ld d, h
+    call WorldTile
+    cp TILE_SAND
+    jp nc, .killE
     ; hit player? |ballPx - shipPx| < 6 both axes
     ld a, [wBallEX]
     ld l, a
