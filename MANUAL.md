@@ -66,6 +66,12 @@ on an Isle of Legend.
 *In port:* Back out of a menu, or set sail from the main menu.
 *At sea:* Weigh anchor and return to the seed screen. Mind you record
 the voyage in port first — leaving the helm writes nothing to the Log.
+*When hailed by a merchant:* Rob the dog (see MERCHANTS OF THE MAIN).
+
+**SELECT Button**
+
+*Anywhere but the seed screen:* Sound on and off.
+*On the seed screen:* Roll a fresh random sea.
 
 **START Button**
 
@@ -162,15 +168,29 @@ cost hull. When the hull reaches zero, see SHIPWRECK, and say a prayer.
 
 ---
 
+## MERCHANTS OF THE MAIN
+
+Lone sails on the horizon are not always pirates. **Merchants** drift the
+open sea and will hail a captain who sails close — a bell rings, and an
+offer is made: a small lot of goods at half the going price.
+
+* **A — buy the lot.** Honest trade, fairly priced.
+* **B — rob the dog.** Take his strongbox instead (30-60 gold) — but half
+  these honest merchants sail with an escort, and it will come for you.
+
+The black flag or the red, Captain. Choose.
+
+---
+
 ## LIFE IN PORT
 
 Beaches with dock planks are ports. Sail alongside and press **A** to
 dock. Every port offers:
 
 * **TRADE** — Buy low, sell high. Four goods move on every market: RUM,
-  SILK, SPICE, and CANNON. Prices drift from port to port; the wise
-  captain remembers where spice was cheap. RIGHT buys, LEFT sells, and
-  the hold fits 50 barrels in all.
+  SILK, SPICE, and CANNON. Prices drift from port to port — and shift a
+  little between visits — so the wise captain never trusts last week's
+  price. RIGHT buys, LEFT sells, and the hold fits 50 barrels in all.
 * **REPAIR** — The shipwright patches your hull, 2 gold per point.
 * **TAVERN** — See below. Worth the price of admission alone.
 * **RECRUIT** — Hire able seamen, 5 gold a head. The more hands aboard,
