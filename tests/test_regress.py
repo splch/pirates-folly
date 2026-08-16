@@ -15,6 +15,14 @@ Covered fixes:
   R11 port menu wraps upward from the top item
   R12 gold display clamps to 9999
   R13 boot clears volatile combat/storm state (phantom storm from random WRAM)
+  R14 digging up a fragment does not fire the cannons
+  R15 SaveGame sets wHasSave (editor offers LOAD without a console reset)
+  R16 boot clears fire cooldowns (R13 follow-through)
+
+Freebies:
+  F1  B-at-sea quit requires a confirming second press
+  F2  storm drift range extended to +-32 (risk/reward fast current)
+  F3  window HUD row 2 shows hull / gold / fragments at sea
 """
 import os
 from pathlib import Path
@@ -113,7 +121,8 @@ def boot(garbage=False):
         import random
         rng = random.Random(1234)
         for name in ("wStormT", "wStormDX", "wStormDY", "wStormDmgT",
-                     "wEnemyActive", "wBallPActive", "wBallEActive"):
+                     "wEnemyActive", "wBallPActive", "wBallEActive",
+                     "wFireCool", "wEnemyFireCool"):
             a = syms[name]
             n = 2 if name == "wStormT" else 1
             for i in range(n):
@@ -171,6 +180,8 @@ def read_text(mem, addr, n):
             out += chr(ord('A') + t - 40)
         elif t == 38:
             out += ":"
+        elif t == 66:
+            out += "/"
     return out
 
 def find_water(s16, x0, x1, y0, y1, pred=None):
@@ -526,10 +537,156 @@ def r13_boot_clears_state():
     pb.stop()
     print("R13 boot clears volatile state: OK")
 
+# --------------------------------- R14: dig does not fire the cannons
+
+def r14_dig_no_cannon():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    # isle 0's cell: find a water tile with a land neighbor (a diggable beach)
+    ix, iy = mem[syms["wIsles"]], mem[syms["wIsles"] + 1]
+    spot = None
+    for ty in range(iy * 18, iy * 18 + 18):
+        for tx in range(ix * 20, ix * 20 + 20):
+            if tile(tx, ty, s16) >= 3:
+                continue
+            if any(tile(tx + ddx, ty + ddy, s16) >= 3
+                   for ddx, ddy in ((0, 1), (0, -1), (1, 0), (-1, 0))):
+                spot = (tx, ty)
+                break
+        if spot:
+            break
+    assert spot, "no beach-adjacent water in isle 0's cell"
+    set16(mem, "wPosX", (spot[0] * 8) << 4)
+    set16(mem, "wPosY", (spot[1] * 8) << 4)
+    for _ in range(5):
+        pb.tick()
+    assert (mem[syms["wShipCX"]], mem[syms["wShipCY"]]) == (ix, iy)
+    mem[syms["wGuardMask"]] = 1          # isle 0's guardian already sunk
+    press(pb, "a", 30)                   # dig up the fragment
+    assert mem[syms["wState"]] == 5, f"state {mem[syms['wState']]}, want DIG"
+    assert not mem[syms["wBallPActive"]], "digging fired a cannonball"
+    pb.stop()
+    print("R14 dig does not fire cannons: OK")
+
+# ---------------------- R15: SaveGame sets wHasSave (continue without reset)
+
+def r15_save_sets_has_save():
+    import shutil, tempfile
+    # a ROM path with no .ram next to it: guaranteed no-save boot
+    tmp = Path(tempfile.mkdtemp()) / "pf_nosave.gb"
+    shutil.copy(ROM, tmp)
+    pb = PyBoy(str(tmp), window="null")
+    pb.set_emulation_speed(0)
+    for _ in range(150):
+        pb.tick()
+    mem = pb.memory
+    assert mem[syms["wHasSave"]] == 0, "fresh cart reported a save"
+    new_game(pb)
+    s16 = seed16(mem)
+    dock_at_district(pb, s16, 10, 34)     # autosaves on dock
+    assert mem[syms["wHasSave"]] == 1, "wHasSave not set after autosave"
+    press(pb, "b", 30)                    # set sail
+    press(pb, "b", 5)                     # arm quit confirm
+    press(pb, "b", 30)                    # confirm: quit to the editor
+    assert mem[syms["wState"]] == 0, "did not return to the editor"
+    hint = read_text(mem, 0x9800 + 5 * 32 + 5, 11)
+    assert hint == "A  NEW GAME", f"editor hint {hint!r}, want 'A  NEW GAME'"
+    pb.stop()
+    print("R15 SaveGame sets wHasSave + editor LOAD hint: OK")
+
+# --------------------------------- R16: boot clears fire cooldowns
+
+def r16_boot_clears_fire_cooldowns():
+    pb = boot(garbage=True)
+    mem = pb.memory
+    assert mem[syms["wFireCool"]] == 0, "wFireCool not cleared at boot"
+    assert mem[syms["wEnemyFireCool"]] == 0, "wEnemyFireCool not cleared at boot"
+    pb.stop()
+    print("R16 boot clears fire cooldowns: OK")
+
+# --------------------------------- F1: B-at-sea quit confirm
+
+def f1_quit_confirm():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    press(pb, "b", 5)
+    assert mem[syms["wState"]] == 2, "single B press quit without confirm"
+    assert mem[syms["wQuitCfm"]] > 0, "confirm window not armed"
+    for _ in range(200):                  # let the window expire
+        pb.tick()
+    assert mem[syms["wQuitCfm"]] == 0, "confirm window never expired"
+    assert mem[syms["wState"]] == 2, "expired confirm still quit"
+    press(pb, "b", 5)                     # re-arm
+    press(pb, "b", 10)                    # confirm
+    assert mem[syms["wState"]] == 0, "second B press did not quit"
+    pb.stop()
+    print("F1 B-at-sea quit confirm: OK")
+
+# --------------------------------- F2: storm drift range
+
+def f2_storm_drift_range():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    isles = {(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
+             for k in range(9)}
+    samples = []
+    for cy in range(16):
+        for cx in range(16):
+            if (cx, cy) in isles:
+                continue                  # isle cells roll no encounters
+            h = mix16(((cx * 73 + cy * 41) & 0xFFFF) ^ s16 ^ 0xC37A)
+            if (h >> 8) >= 13 or (h & 0xFF) < 48:
+                continue                  # want storm-only cells (no pirate)
+            wx, wy = cx * 20 + 10, cy * 18 + 9
+            if tile(wx, wy, s16) >= 3:
+                continue                  # ship must stay in water
+            for i in range(32):
+                mem[syms["wExplored"] + i] = 0
+            set16(mem, "wStormT", 0)
+            set16(mem, "wPosX", (wx * 8) << 4)
+            set16(mem, "wPosY", (wy * 8) << 4)
+            for _ in range(4):
+                pb.tick()
+            if w16(mem, "wStormT") > 0:
+                dx = mem[syms["wStormDX"]]
+                dy = mem[syms["wStormDY"]]
+                samples.append((dx - 256 if dx > 127 else dx,
+                                dy - 256 if dy > 127 else dy))
+    assert len(samples) >= 5, f"only {len(samples)} storm cells found"
+    biggest = max(max(abs(dx), abs(dy)) for dx, dy in samples)
+    assert biggest > 16, \
+        f"storm drift never exceeded 16 over {len(samples)} storms (old range)"
+    pb.stop()
+    print(f"F2 storm drift range: OK ({len(samples)} storms, max {biggest})")
+
+# --------------------------------- F3: HUD stats line at sea
+
+def f3_hud_stats_line():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    mem[syms["wHull"]] = 17
+    set16(mem, "wGold", 1234)
+    mem[syms["wFragMask"]] = 0b101
+    mem[syms["wFragMask"] + 1] = 0
+    for _ in range(3):
+        pb.tick()
+    line = read_text(mem, 0x9C00 + 32, 15)
+    assert line == "H17 G1234 F2/9 ", f"HUD row 1 {line!r}"
+    pb.stop()
+    print("F3 HUD hull/gold/fragments line: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
                r8_final_wave_returned, r9_r10_tavern, r11_r12_menu_and_gold,
-               r13_boot_clears_state):
+               r13_boot_clears_state, r14_dig_no_cannon, r15_save_sets_has_save,
+               r16_boot_clears_fire_cooldowns, f1_quit_confirm,
+               f2_storm_drift_range, f3_hud_stats_line):
         fn()
     print("ALL REGRESSION CHECKS PASSED")
