@@ -27,6 +27,10 @@ LoadTiles::
     ld de, $8000 + 32 * 16
     ld bc, 36 * 16
     call CopyVRAM
+    ld hl, SplashTile
+    ld de, $8000 + 15 * 16
+    ld bc, 16
+    call CopyVRAM
     ld hl, BallTile
     ld de, $8000 + 12 * 16
     ld bc, 16
@@ -746,4 +750,15 @@ BallTile:
     dw `03222230
     dw `00322300
     dw `00033000
+    dw `00000000
+
+SECTION "Splash tile", ROM0
+SplashTile:
+    dw `00000000
+    dw `03000030
+    dw `00000000
+    dw `30033003
+    dw `00000000
+    dw `03300330
+    dw `00000000
     dw `00000000

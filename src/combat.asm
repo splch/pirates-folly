@@ -37,6 +37,19 @@ wLoDY:          dw
 wLoI:           db              ; LOS sampling: sample index
 wLosT:          db              ; frames until next LOS check
 wNoLOS:         db              ; consecutive failed LOS checks
+; --- combat juice: these four timers MUST stay contiguous (fx tick loop) ---
+wEnemyFlash::   db              ; enemy hit-flash frames (blink)
+wSinkT::        db              ; sinking-animation frames
+wSplashT::      db              ; ball splash frames
+wSmokeT::       db              ; muzzle-smoke frames
+wSinkX:         dw              ; world px of the sinking ship
+wSinkY:         dw
+wSplashX:       dw              ; world px of the splash
+wSplashY:       dw
+wSmokeX:        dw              ; world px of the smoke puff
+wSmokeY:        dw
+wFxX:           dw              ; render scratch (sink slide offset)
+wFxY:           dw
 
 SECTION "Combat", ROM0
 
@@ -280,6 +293,12 @@ StormTick::
     ret z
     dec a
     ld [wHull], a
+    ld a, 8
+    ld [wShakeT], a
+    ld a, 6
+    ld [wHitFlashT], a
+    ld a, [wHull]
+    and a
     ret nz
     ld a, 20
     ld [wDmgCool], a
@@ -502,6 +521,17 @@ FireCannon::
     ld [wBallPY+1], a
     ld a, 40
     ld [wBallPLife], a
+    ; muzzle smoke at the ship's bow
+    ld a, [wShipX]
+    ld [wSmokeX], a
+    ld a, [wShipX+1]
+    ld [wSmokeX+1], a
+    ld a, [wShipY]
+    ld [wSmokeY], a
+    ld a, [wShipY+1]
+    ld [wSmokeY+1], a
+    ld a, 10
+    ld [wSmokeT], a
     ld a, SFX_CANNON
     call PlaySfx
     ret
@@ -554,6 +584,18 @@ UpdateCombat::
     dec a
     ld [wFireCool], a
 .cd
+    ; juice timers (wEnemyFlash..wSmokeT are contiguous)
+    ld hl, wEnemyFlash
+    ld b, 4
+.fxTick
+    ld a, [hl]
+    and a
+    jr z, .fxNext
+    dec [hl]
+.fxNext
+    inc hl
+    dec b
+    jr nz, .fxTick
     ret
 
 UpdateEnemy:
@@ -881,14 +923,16 @@ UpdateBalls:
     call AbsHL
     ld a, h
     and a
-    jr nz, .enemyBall
+    jp nz, .enemyBall
     ld a, l
     cp 6
-    jr nc, .enemyBall
+    jp nc, .enemyBall
     ; HIT!
     call .killP2
     ld a, SFX_HIT
     call PlaySfx
+    ld a, 8
+    ld [wEnemyFlash], a            ; blink the stricken ship
     ld a, [wEnemyHP]
     dec a
     ld [wEnemyHP], a
@@ -896,7 +940,33 @@ UpdateBalls:
     ; sink!
     xor a
     ld [wEnemyActive], a
-    ld [wShadowOAM + 4], a
+    ; run the sinking animation from her last position
+    ld a, 24
+    ld [wSinkT], a
+    ld a, [wEnemyX]
+    ld l, a
+    ld a, [wEnemyX+1]
+    ld h, a
+    REPT 4
+    srl h
+    rr l
+    ENDR
+    ld a, l
+    ld [wSinkX], a
+    ld a, h
+    ld [wSinkX+1], a
+    ld a, [wEnemyY]
+    ld l, a
+    ld a, [wEnemyY+1]
+    ld h, a
+    REPT 4
+    srl h
+    rr l
+    ENDR
+    ld a, l
+    ld [wSinkY], a
+    ld a, h
+    ld [wSinkY+1], a
     ld a, SFX_SINK
     call PlaySfx
     ld a, SFX_COIN
@@ -1018,6 +1088,10 @@ UpdateBalls:
     ret nz
     ld a, 20
     ld [wDmgCool], a
+    ld a, 8
+    ld [wShakeT], a
+    ld a, 6
+    ld [wHitFlashT], a
     ld a, [wHull]
     and a
     ret z
@@ -1033,10 +1107,48 @@ UpdateBalls:
 .killE
     xor a
     ld [wBallEActive], a
+    ld de, wBallEX
+    call .setSplashP
     ret
 .killP2
     xor a
     ld [wBallPActive], a
+    ld de, wBallPX
+    call .setSplashP
+    ret
+
+; in: de = ptr to a ball's 12.4 X (Y at de+2). Splash there for 8 frames.
+; clobbers a, d, e, h, l
+.setSplashP
+    ld a, [de]
+    ld l, a
+    inc de
+    ld a, [de]
+    ld h, a
+    REPT 4
+    srl h
+    rr l
+    ENDR
+    ld a, l
+    ld [wSplashX], a
+    ld a, h
+    ld [wSplashX+1], a
+    inc de
+    ld a, [de]
+    ld l, a
+    inc de
+    ld a, [de]
+    ld h, a
+    REPT 4
+    srl h
+    rr l
+    ENDR
+    ld a, l
+    ld [wSplashY], a
+    ld a, h
+    ld [wSplashY+1], a
+    ld a, 8
+    ld [wSplashT], a
     ret
 
 ; helper: hl += sign-extend(a)
@@ -1062,7 +1174,14 @@ RenderCombat::
     ; --- enemy (entry 1) ---
     ld a, [wEnemyActive]
     and a
-    jr z, .hideE
+    jr z, .trySink
+    ; hit flash: blink the sprite every 2 frames while the timer is live
+    ld a, [wEnemyFlash]
+    and a
+    jr z, .showE
+    and 2
+    jr nz, .hideE
+.showE
     ld a, [wEnemyX]
     ld l, a
     ld a, [wEnemyX+1]
@@ -1109,6 +1228,31 @@ RenderCombat::
 .hideE
     xor a
     ld [wShadowOAM + 4], a
+    jr .ballP
+.trySink
+    ld a, [wSinkT]
+    and a
+    jr z, .hideE
+    ; she slides under: sink Y offset = (24 - t) / 4 px
+    ld a, 24
+    ld hl, wSinkT
+    sub [hl]
+    srl a
+    srl a
+    ld hl, wSinkY
+    add [hl]
+    ld [wFxY], a
+    ld a, [wSinkY+1]
+    ld [wFxY+1], a
+    ld a, [wSinkX]
+    ld [wFxX], a
+    ld a, [wSinkX+1]
+    ld [wFxX+1], a
+    ld de, wFxX
+    ld hl, wShadowOAM + 4
+    ld b, TILE_SHIP_S
+    ld c, $10                      ; OBP1 (dark pirate)
+    call .pxSprite
 .ballP
     ld a, [wBallPActive]
     and a
@@ -1127,10 +1271,77 @@ RenderCombat::
     ld de, wBallEX
     ld hl, wShadowOAM + 12
     call .ballSprite
-    ret
+    jr .fx
 .hideBE
     xor a
     ld [wShadowOAM + 12], a
+.fx
+    ; --- splash (entry 4) ---
+    ld a, [wSplashT]
+    and a
+    jr z, .noSplash
+    ld de, wSplashX
+    ld hl, wShadowOAM + 16
+    ld b, TILE_SPLASH
+    ld c, 0
+    call .pxSprite
+    jr .smoke
+.noSplash
+    xor a
+    ld [wShadowOAM + 16], a
+.smoke
+    ; --- muzzle smoke (entry 5) ---
+    ld a, [wSmokeT]
+    and a
+    jr z, .noSmoke
+    ld de, wSmokeX
+    ld hl, wShadowOAM + 20
+    ld b, TILE_SPLASH
+    ld c, $10                      ; dark puff
+    call .pxSprite
+    ret
+.noSmoke
+    xor a
+    ld [wShadowOAM + 20], a
+    ret
+
+; helper: write a sprite at a world-pixel position.
+; in: de = ptr to world-px X (Y at de+2), hl = OAM entry, b = tile, c = attr
+; off-screen: entry hidden. clobbers a, d, e, hl
+.pxSprite
+    ld a, [de]
+    push hl
+    ld hl, wCamX
+    sub [hl]                       ; low-byte diff is exact (<256 apart)
+    add 4
+    inc de
+    inc de
+    push af
+    ld a, [de]
+    ld hl, wCamY
+    sub [hl]
+    add 12
+    ld e, a                        ; e = sy
+    pop af                         ; a = sx
+    pop hl
+    cp 169
+    jr nc, .pxHide
+    ld d, a
+    ld a, e
+    cp 160
+    jr nc, .pxHide
+    ld a, e
+    ld [hli], a                    ; Y
+    ld a, d
+    ld [hli], a                    ; X
+    ld a, b
+    ld [hli], a                    ; tile
+    ld a, c
+    ld [hl], a                     ; attr
+    ret
+.pxHide
+    xor a
+    ld [hl], a
     ret
 
 ; helper: write ball sprite from 12.4 pos at [de] to OAM entry at hl
