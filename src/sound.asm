@@ -65,6 +65,7 @@ wMusCh4Base: dw
 wMusCh4T:    db
 wMusCh:      db           ; MusTick channel index temp
 wSongID::    db
+wMuted::     db           ; SELECT toggles: 1 = all audio gated off
 wSfx1T:      db           ; ch1 SFX frames remaining (steals melody)
 wSfx4T:      db           ; ch4 SFX frames remaining (steals percussion)
 
@@ -137,6 +138,9 @@ SetSong::
 
 ; Called once per frame from MainLoop.
 UpdateSound::
+    ld a, [wMuted]
+    and a
+    ret nz
     ld a, [wSongID]
     and a
     ret z                          ; no music
@@ -292,8 +296,25 @@ MusTick:
     ldh [rAUD4ENV], a
     ret
 
+; SELECT anywhere (but the seed editor) toggles all audio.
+ToggleMute::
+    ld a, [wMuted]
+    xor 1
+    ld [wMuted], a
+    ret z                          ; unmuted: music resumes on the next note
+    xor a                          ; muted: cut every channel right now
+    ldh [rAUD1ENV], a
+    ldh [rAUD2ENV], a
+    ldh [rAUD4ENV], a
+    ret
+
 ; in: a = SFX_* id (1..9). Plays immediately; music channel resumes after.
 PlaySfx::
+    ld c, a                        ; keep the id: the gate needs a, and
+    ld a, [wMuted]                 ; callers keep their own values in b
+    and a
+    ret nz
+    ld a, c
     dec a
     add a
     add a                          ; (id-1) * 4

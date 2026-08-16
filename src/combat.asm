@@ -50,6 +50,12 @@ wSmokeX:        dw              ; world px of the smoke puff
 wSmokeY:        dw
 wFxX:           dw              ; render scratch (sink slide offset)
 wFxY:           dw
+wMerchActive::  db
+wMerchX:        dw              ; 12.4 fixed point
+wMerchY:        dw
+wMerchT::       dw              ; despawn timer
+wMerchHailed::  db              ; 1 = the offer was already made
+wEscortPend::   db              ; 1 = a robbed merchant's escort still seeks water
 
 SECTION "Combat", ROMX, BANK[3]
 
@@ -60,6 +66,9 @@ SpawnCheck::
     ld a, [wEnemyActive]
     and a
     ret nz                       ; one enemy at a time
+    ld a, [wMerchActive]
+    and a
+    ret nz                       ; and one merchant at a time
     ld a, [wShipCX]
     ld b, a
     ld a, [wShipCY]
@@ -94,6 +103,12 @@ SpawnCheck::
     cp 48                          ; pirate ~19%
     call c, SpawnEnemy
     pop hl
+    push hl
+    ld a, l
+    sub 48                         ; merchant lane 48..67 (~8%)
+    cp 20
+    call c, SpawnMerchant
+    pop hl
     ld a, h
     cp 13                          ; storm ~5%
     call c, StartStorm
@@ -105,6 +120,9 @@ SpawnCheck::
 ; either always or never spawns).
 RevisitRoll::
     ld a, [wEnemyActive]
+    and a
+    ret nz
+    ld a, [wMerchActive]
     and a
     ret nz                       ; one enemy at a time
     ld a, [wShipCX]
@@ -120,6 +138,12 @@ RevisitRoll::
     cp 12                          ; pirate ~4.7%
     call c, SpawnEnemy
     pop hl
+    push hl
+    ld a, l
+    sub 12                         ; merchant lane 12..31 (~7.8%)
+    cp 20
+    call c, SpawnMerchant
+    pop hl
     ld a, h
     cp 3                           ; storm ~1.2%
     call c, StartStorm
@@ -133,7 +157,12 @@ SPAWN_OFF: db 100, 0, 0, 100, -100, 0, 0, -100   ; E S W N
            db  60, 0, 0, 60,  -60, 0, 0,  -60    ; near E S W N
 POPS
 
-SpawnEnemy::
+; Pick a water spawn spot on the ring around the ship. 8 candidate
+; offsets: far ring first, near ring second (guardians near big islands
+; need options; callers retry on later frames when the pick lands on land).
+; out: carry set + de = ex, hl = ey (world px) on success; carry clear on land.
+; clobbers all.
+PickSpawnSpot:
     call Rand16
     and 7
     add a
@@ -230,6 +259,16 @@ SpawnEnemy::
     pop hl
     pop de
     cp TILE_SAND
+    jr nc, .land
+    scf
+    ret
+.land
+    and a                          ; carry clear: the pick was land
+    ret
+
+; Spawn a pirate ship near the player, in open water.
+SpawnEnemy::
+    call PickSpawnSpot
     ret nc                         ; land: abort spawn
     ; activate
     ld a, 1
@@ -282,6 +321,133 @@ SpawnEnemy::
     ld a, PIRATE_FIRECOOL
     sub b                          ; >= 30 even at 9 fragments
     ld [wEnemyFireCool], a
+    ret
+
+; A merchant sail on the ring: becalmed, hails once, leaves after ~15 s.
+SpawnMerchant::
+    ld a, [wMerchActive]
+    and a
+    ret nz
+    call PickSpawnSpot
+    ret nc
+    ld a, 1
+    ld [wMerchActive], a
+    xor a
+    ld [wMerchHailed], a
+    ld a, LOW(900)
+    ld [wMerchT], a
+    ld a, HIGH(900)
+    ld [wMerchT+1], a
+    ; wMerchY = ey << 4 (ey in hl)
+    REPT 4
+    add hl, hl
+    ENDR
+    ld a, l
+    ld [wMerchY], a
+    ld a, h
+    ld [wMerchY+1], a
+    ; wMerchX = ex << 4 (ex in de)
+    ld l, e
+    ld h, d
+    REPT 4
+    add hl, hl
+    ENDR
+    ld a, l
+    ld [wMerchX], a
+    ld a, h
+    ld [wMerchX+1], a
+    ret
+
+; out: a = rough pixel range to the merchant (255 if either axis >= 256).
+; clobbers a, b, c, d, e, h, l
+MerchRange:
+    ld a, [wMerchX]
+    ld l, a
+    ld a, [wMerchX+1]
+    ld h, a
+    REPT 4
+    srl h
+    rr l
+    ENDR                           ; hl = merch px X
+    ld a, [wShipX]
+    ld c, a
+    ld a, [wShipX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL                     ; |dx|
+    push hl
+    ld a, [wMerchY]
+    ld l, a
+    ld a, [wMerchY+1]
+    ld h, a
+    REPT 4
+    srl h
+    rr l
+    ENDR
+    ld a, [wShipY]
+    ld c, a
+    ld a, [wShipY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL                     ; |dy|
+    pop de                         ; de = |dx|
+    ld a, d
+    or h
+    jr nz, .far
+    ld a, e
+    cp l
+    jr nc, .max
+    ld a, l
+.max
+    ret
+.far
+    ld a, 255
+    ret
+
+; Per-frame merchant: despawn on timeout or distance; hail once when the
+; player sails close. Called from UpdateCombat (sailing only).
+UpdateMerchant:
+    ld a, [wMerchActive]
+    and a
+    ret z
+    ld a, [wMerchT]
+    ld l, a
+    ld a, [wMerchT+1]
+    ld h, a
+    dec hl
+    ld a, l
+    ld [wMerchT], a
+    ld a, h
+    ld [wMerchT+1], a
+    or l
+    jr z, .gone
+    call MerchRange
+    cp 141
+    jr nc, .gone                   ; left behind
+    ld a, [wMerchHailed]
+    and a
+    ret nz                         ; he made his offer already
+    call MerchRange
+    cp 20
+    ret nc
+    ld a, 1
+    ld [wMerchHailed], a
+    call MerchScene
+    ret
+.gone
+    xor a
+    ld [wMerchActive], a
+    ld [wShadowOAM + 24], a
     ret
 
 ; ---------------------------------------------------------------------------
@@ -650,6 +816,21 @@ UpdateCombat::
     inc hl
     dec b
     jr nz, .fxTick
+    call UpdateMerchant
+    ; a robbed merchant's escort keeps trying until it finds water
+    ld a, [wEscortPend]
+    and a
+    jr z, .noEscort
+    ld a, [wEnemyActive]
+    and a
+    jr nz, .noEscort
+    call SpawnEnemy
+    ld a, [wEnemyActive]
+    and a
+    jr z, .noEscort
+    xor a
+    ld [wEscortPend], a
+.noEscort
     ret
 
 UpdateEnemy:
@@ -1314,10 +1495,24 @@ RenderCombat::
     ld b, TILE_SPLASH
     ld c, $10                      ; dark puff
     call .pxSprite
-    ret
+    jr .merch
 .noSmoke
     xor a
     ld [wShadowOAM + 20], a
+.merch
+    ; --- merchant (entry 6) ---
+    ld a, [wMerchActive]
+    and a
+    jr z, .hideM
+    ld de, wMerchX
+    ld hl, wShadowOAM + 24
+    ld b, TILE_SHIP_E
+    ld c, 0
+    call .pxSprite
+    ret
+.hideM
+    xor a
+    ld [wShadowOAM + 24], a
     ret
 
 ; helper: write a sprite at a world-pixel position.

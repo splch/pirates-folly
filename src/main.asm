@@ -94,6 +94,13 @@ EntryPoint:
     ld [wSplashT], a
     ld [wSmokeT], a
     ld [wCursor], a
+    ld [wMerchActive], a           ; a merchant is per-voyage, never saved
+    ld [wMerchT], a
+    ld [wMerchT+1], a
+    ld [wMerchHailed], a
+    ld [wEscortPend], a
+    ld [wMuted], a
+    ld [wPriceDrift], a
     ld a, $FF                    ; MarkExplored tile cache: invalid
     ld [wMarkTX], a
     ld [wMarkTX+1], a
@@ -197,6 +204,15 @@ MainLoop:
     ld [wVBlankFlag], a
     ld hl, wFrameCounter
     inc [hl]
+    ; SELECT toggles sound everywhere but the seed editor (there it
+    ; re-rolls the seed). Uses last frame's edges: ReadJoypad runs later.
+    ld a, [wState]
+    and a                          ; STATE_EDIT
+    jr z, .noMute
+    ld a, [wJoyNew]
+    and PADF_SELECT
+    call nz, ToggleMute
+.noMute
     call UpdateSound
     ld a, [wState]
     cp STATE_TITLE
@@ -209,6 +225,8 @@ MainLoop:
     jr z, .port
     cp STATE_DIG
     jr z, .dig
+    cp STATE_MERCH
+    jr z, .merch
     cp STATE_WIN
     jr z, .win
     call ReadJoypad
@@ -232,6 +250,10 @@ MainLoop:
     call ReadJoypad
     call UpdateDig
     jr MainLoop
+.merch
+    call ReadJoypad
+    call UpdateMerch
+    jr MainLoop
 .win
     call ReadJoypad
     call UpdateWin
@@ -239,7 +261,7 @@ MainLoop:
 .title
     call ReadJoypad
     call UpdateTitle
-    jr MainLoop
+    jp MainLoop                  ; .merch grew the loop past jr range
 
 VBlankHandler:
     push af
@@ -304,7 +326,7 @@ UpdateEdit:
 .notStart
     ld a, [wJoyNew]
     and PADF_A
-    jr z, .render
+    jr z, .notNewGame
     call ComposeSeed
     call FoldSeed16
     call InitNewGame
@@ -312,6 +334,27 @@ UpdateEdit:
     ld a, STATE_SAIL
     ld [wState], a
     ret
+.notNewGame
+    ld a, [wJoyNew]
+    and PADF_SELECT
+    jr z, .render
+    ; SELECT: roll a fresh random seed into the editor
+    ld de, wSeedNib
+    ld b, 4
+.reroll
+    push de                        ; Rand16 clobbers d, e
+    call Rand16
+    pop de
+    ld a, h
+    and $0F
+    ld [de], a
+    inc de
+    ld a, l
+    and $0F
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .reroll
 .render
     call RenderSeedRow
     ret
@@ -554,6 +597,26 @@ InitNewGame:
     ld [wWon], a
     ld [wIsGuardian], a
     ld [wCartDone], a            ; bounty is per-voyage (wBestGold persists)
+    ld [wPriceDrift], a
+    ld [wMerchActive], a         ; a fresh sea: no leftover encounters
+    ld [wMerchT], a
+    ld [wMerchT+1], a
+    ld [wMerchHailed], a
+    ld [wEscortPend], a
+    ld [wStormT], a              ; a storm/enemy from a B-quit voyage must
+    ld [wStormT+1], a            ; not follow the player into the new one
+    ld [wStormDX], a
+    ld [wStormDY], a
+    ld [wStormDmgT], a
+    ld [wEnemyActive], a
+    ld [wBallPActive], a
+    ld [wBallEActive], a
+    ld [wFireCool], a
+    ld [wEnemyFireCool], a
+    ld [wEnemyFlash], a
+    ld [wSinkT], a
+    ld [wSplashT], a
+    ld [wSmokeT], a
     ld hl, wExplored             ; + wPortCells (contiguous, 64 B total)
     ld b, 64
 .clr

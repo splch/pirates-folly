@@ -20,6 +20,8 @@ wNpDir::     db
 wNpDays::    db
 wBestK:      db
 wBestIsle::  db           ; isle index of nearest unclaimed (tavern rumor)
+wDigT::      db           ; dig-ceremony frames left (0 = reveal shown)
+wDigCount:   db           ; fragment count saved for the reveal
 
 SECTION "Isles", ROMX, BANK[3]
 
@@ -336,6 +338,9 @@ CellWatch::
     ld a, [wEnemyActive]
     and a
     ret nz
+    ld a, [wMerchActive]
+    and a
+    ret nz                         ; don't crash a merchant parley
     call SpawnGuardian
     ld a, [wEnemyActive]
     and a
@@ -374,6 +379,9 @@ CellWatch::
     ld a, [wEnemyActive]
     and a
     ret nz
+    ld a, [wMerchActive]
+    and a
+    ret nz                         ; don't crash a merchant parley
     call SpawnGuardian             ; aborts on land: retried next frame
     ret
 
@@ -381,14 +389,36 @@ CellWatch::
 ; The dig
 ; ---------------------------------------------------------------------------
 
-; Player dug up a fragment on isle wCurIsle.
+; Player digs on isle wCurIsle: a short ceremony (knocks in the sand),
+; then DigReveal pays off. Any key skips the ceremony.
 DigScene::
-    ld a, JINGLE_DIG
-    call SetSong
     ld a, [wCurIsle]
     call SetFrag
-    ; count fragments
-    call CountFrags                ; a = count
+    call CountFrags
+    ld [wDigCount], a              ; the reveal reads it after the ceremony
+    call LcdOff
+    call DrawSeedScreen
+    ld hl, StrDigSpot
+    ld de, $9800 + 4 * 32 + 2
+    call PrintStr
+    ld hl, StrDigging
+    ld de, $9800 + 6 * 32 + 6
+    call PrintStr
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    ld a, 90
+    ld [wDigT], a
+    ld a, SFX_KNOCK
+    call PlaySfx
+    ld a, STATE_DIG
+    ld [wState], a
+    ret
+
+; The dig pays off: the fragment count screen, or the final battle at 9.
+DigReveal:
+    ld a, JINGLE_DIG
+    call SetSong
+    ld a, [wDigCount]
     cp 9
     jr z, .final
     ; render: "YOU FOUND A CHART FRAGMENT!" + "k OF 9"
@@ -423,11 +453,34 @@ DigScene::
 .show
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
     ldh [rLCDC], a
-    ld a, STATE_DIG
-    ld [wState], a
     ret
 
 UpdateDig::
+    ld a, [wDigT]
+    and a
+    jr z, .revealed
+    ld b, a
+    ld a, [wJoyNew]
+    and a
+    jr nz, .revealNow              ; any key skips the ceremony
+    ld a, b
+    dec a
+    ld [wDigT], a
+    jr z, .revealNow
+    cp 60
+    jr z, .knock
+    cp 30
+    ret nz
+.knock
+    ld a, SFX_KNOCK
+    call PlaySfx
+    ret
+.revealNow
+    xor a
+    ld [wDigT], a
+    call DigReveal
+    ret
+.revealed
     ld a, [wJoyNew]
     and a
     ret z
@@ -568,6 +621,8 @@ FindNearestIsle::
 SECTION "Isle strings", ROMX, BANK[3]
 StrFound1: db "YOU FOUND A", 0
 StrFound2: db "CHART FRAGMENT!", 0
+StrDigSpot: db "X MARKS THE SPOT!", 0
+StrDigging: db "DIGGING", 0
 StrOf9:    db "OF 9", 0
 StrFinal1: db "THE FINAL BATTLE", 0
 StrFinal2: db "APPROACHES!", 0

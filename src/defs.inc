@@ -9,6 +9,7 @@ DEF STATE_PORT EQU 4        ; port menu
 DEF STATE_DIG  EQU 5        ; treasure dig scene
 DEF STATE_WIN  EQU 6        ; victory screen
 DEF STATE_TITLE EQU 7       ; title screen (M6)
+DEF STATE_MERCH EQU 8       ; merchant hail: trade or plunder
 
 ; --- Joypad combined-byte masks (bit set = pressed) ---
 ; bit 7..0 = Down Up Left Right Start Select B A

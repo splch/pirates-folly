@@ -34,6 +34,11 @@ wNpY:       db
 wCandX::    db          ; candidate district under test
 wCandY::    db
 wNpFound:   db
+wPriceDrift:: db        ; bumps on every dock: prices drift between visits
+wMerchPhase: db         ; 1 = offer shown, 2 = result shown
+wMerchGood:: db
+wMerchQty::  db
+wMerchPrice:: db
 ; wNpDays/wNpDir are the isles.asm exports (shared): FindNearestPort and
 ; FindNearestIsle each write them right before their print, and the tavern
 ; prints the port line before the isle line, so one pair serves both.
@@ -164,6 +169,8 @@ TryDock::
     ld a, [wPortDY]
     ld [wLastPortDY], a
     call MarkPortCell              ; chart the port (beach's cell)
+    ld hl, wPriceDrift             ; prices drift a little between visits
+    inc [hl]
     ; hash for name/prices/rumor
     ld a, [wPortDX]
     ld b, a
@@ -558,12 +565,18 @@ RenderPort:
     call DrawCursor
     ret
 
-; Draw the '>' cursor for the current menu (main: rows 6+, trade: rows 6+).
+; Draw the '>' cursor for the current menu (main: col 4, trade: col 0 —
+; the trade rows hold good names from col 2, and col 4 stomped the M in RUM).
 DrawCursor:
     ld a, [wPortMenu]
     add 6
     call MapRowAddr
     ld bc, 4
+    ld a, [wPortState]
+    cp PTRADE
+    jr nz, .col
+    ld bc, 0
+.col
     add hl, bc
     ld a, TILE_GT
     ld [hl], a
@@ -592,7 +605,7 @@ EraseCursors:
 ; ---------------------------------------------------------------------------
 
 PUSHS "Trade tables", ROMX, BANK[3]
-GOOD_NAMES:  dw StrRum, StrSilk, StrSpice, StrCannon
+GOOD_NAMES:: dw StrRum, StrSilk, StrSpice, StrCannon
 GOOD_BASE:   db 5, 10, 15, 25
 POPS
 
@@ -609,6 +622,9 @@ GoodPrice:
     ENDR
     xor l
     ld l, a
+    ld a, [wPriceDrift]              ; prices drift a little between visits
+    xor h
+    ld h, a
     call Mix16
     ld a, l
     and 7
@@ -657,10 +673,10 @@ RenderTrade:
     call MapRowAddr
     ld bc, 9
     add hl, bc
-    push hl
-    pop de
+    push hl                          ; dest survives GoodPrice (Mul8 hits de)
     ld a, [wPortK]
     call GoodPrice
+    pop de
     call PrintDec3
     ; owned
     pop af
@@ -668,14 +684,14 @@ RenderTrade:
     call MapRowAddr
     ld bc, 14
     add hl, bc
-    push hl
-    pop de
+    push hl                          ; dest survives the cargo lookup
     ld a, [wPortK]
     ld hl, wCargo
     ld e, a
     ld d, 0
     add hl, de
     ld a, [hl]
+    pop de
     call PrintDec3
     pop af
     ld a, [wPortK]
@@ -1107,6 +1123,199 @@ RecruitAction:
     ret
 
 ; ---------------------------------------------------------------------------
+; Merchant encounter (STATE_MERCH): trade or plunder. The scene renders and
+; input lives here (GOOD_NAMES, gold/cargo helpers); the sailing mechanics
+; (spawn/despawn/hail range) live in combat.asm.
+; ---------------------------------------------------------------------------
+
+; The merchant hails: roll the deal and show the offer. LCD on entry.
+MerchScene::
+    ld a, 1
+    ld [wMerchPhase], a
+    call Rand16
+    ld a, l
+    and 3
+    ld [wMerchGood], a             ; good 0..3
+    ld a, h
+    and 3
+    add 3
+    ld [wMerchQty], a              ; 3..6
+    ld a, [wMerchGood]
+    ld hl, GOOD_BASE
+    ld e, a
+    ld d, 0
+    add hl, de
+    ld a, [hl]
+    srl a                          ; half the base price (2,5,7,12)
+    ld [wMerchPrice], a
+    call LcdOffHome
+    call ClearOAM
+    call DrawSeedScreen
+    ld hl, StrMerchHail
+    ld de, $9800 + 3 * 32
+    call PrintStr
+    ; deal line, col 0: "6 CANNON AT 12G EACH" is exactly 20 wide
+    ld de, $9800 + 5 * 32
+    ld a, [wMerchQty]
+    add TILE_HEX0
+    ld [de], a
+    inc de
+    ld a, TILE_SPACE
+    ld [de], a
+    inc de
+    ld a, [wMerchGood]
+    add a
+    ld c, a
+    ld b, 0
+    ld hl, GOOD_NAMES
+    add hl, bc
+    ld a, [hli]
+    ld h, [hl]
+    ld l, a
+    call PrintStr
+    ld hl, StrMerchAt
+    call PrintStr
+    ld a, [wMerchPrice]
+    call PrintDec2
+    ld hl, StrMerchGE
+    call PrintStr
+    ld hl, StrMerchBuy
+    ld de, $9800 + 7 * 32 + 3
+    call PrintStr
+    ld hl, StrMerchRob
+    ld de, $9800 + 8 * 32 + 3
+    call PrintStr
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    ld a, SFX_BELL
+    call PlaySfx
+    ld a, STATE_MERCH
+    ld [wState], a
+    ret
+
+; hl = result string: clear the screen, show it, consume the merchant.
+MerchResult:
+    push hl
+    call LcdOff
+    call ClearOAM
+    call DrawSeedScreen
+    pop hl
+    ld de, $9800 + 4 * 32
+    call PrintStr
+    ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01
+    ldh [rLCDC], a
+    xor a
+    ld [wMerchActive], a
+    ret
+
+MerchBuy:
+    ; clamp the lot to hold space
+    call TotalCargo
+    ld b, a
+    ld a, CARGO_MAX
+    sub b                          ; space left
+    ld b, a
+    ld a, [wMerchQty]
+    cp b
+    jr c, .qtyOk
+    ld a, b
+.qtyOk
+    and a
+    jr z, .full
+    ld [wMerchQty], a
+    ld b, a
+    ld a, [wMerchPrice]
+    call Mul8                      ; hl = cost (<= 6*12 = 72, fits l)
+    ld a, [wGold]
+    cp l
+    ld a, [wGold+1]
+    sbc 0
+    jr c, .poor
+    ld a, [wGold]
+    sub l
+    ld [wGold], a
+    ld a, [wGold+1]
+    sbc 0
+    ld [wGold+1], a
+    ld a, [wMerchGood]
+    ld e, a
+    ld d, 0
+    ld hl, wCargo
+    add hl, de
+    ld a, [wMerchQty]
+    add [hl]
+    ld [hl], a
+    ld a, SFX_COIN
+    call PlaySfx
+    ld hl, StrMerchDone
+    jp MerchResult
+.full
+    ld hl, StrHoldFull
+    jp MerchResult
+.poor
+    ld hl, StrLackGold
+    jp MerchResult
+
+MerchRob:
+    call Rand16
+    push hl
+    ld a, l
+    and 31
+    add 30                         ; 30..61 gold from the strongbox
+    ld b, a
+    ld a, [wGold]
+    add b
+    ld [wGold], a
+    ld a, [wGold+1]
+    adc 0
+    ld [wGold+1], a
+    ld a, SFX_COIN
+    call PlaySfx
+    pop hl
+    ld a, h
+    and 1
+    jr z, .clean
+    call SpawnEnemy
+    ld a, [wEnemyActive]
+    and a
+    jr nz, .showEscort               ; spawned right away
+    ld a, 1                          ; else retry until the pick finds water
+    ld [wEscortPend], a
+.showEscort
+    ld hl, StrEscort
+    jp MerchResult
+.clean
+    ld hl, StrRobbed
+    jp MerchResult
+
+UpdateMerch::
+    ld a, [wMerchPhase]
+    cp 2
+    jr z, .result
+    ld a, [wJoyNew]
+    and PADF_A
+    jr z, .notBuy
+    call MerchBuy
+    jr .toResult
+.notBuy
+    ld a, [wJoyNew]
+    and PADF_B
+    ret z
+    call MerchRob
+.toResult
+    ld a, 2
+    ld [wMerchPhase], a
+    ret
+.result
+    ld a, [wJoyNew]
+    and a
+    ret z
+    call SailRedraw
+    ld a, STATE_SAIL
+    ld [wState], a
+    ret
+
+; ---------------------------------------------------------------------------
 ; Text helpers
 ; ---------------------------------------------------------------------------
 
@@ -1140,7 +1349,8 @@ PrintDec3::
     ld [de], a
     inc de
     ld a, b
-    ; fall through to PrintDec2
+    jp PrintDec2                   ; (PrintDec4 follows, NOT PrintDec2 —
+                                   ;  falling through printed "x9999")
 
 
 ; hl = value -> 4 decimal digits at de. clobbers a, b, c, de, hl
@@ -1456,6 +1666,17 @@ StrRecruitCost: db "COST 5 PER CREW", 0
 StrAConfirm: db "PRESS A", 0
 StrDays:    db " DAYS ", 0
 StrNoRumor: db "NO NEWS TODAY", 0
+
+StrMerchHail: db "A MERCHANT HAILS YE", 0
+StrMerchAt:   db " AT ", 0
+StrMerchGE:   db "G EACH", 0
+StrMerchBuy:  db "A BUY THE LOT", 0
+StrMerchRob:  db "B ROB THE DOG", 0
+StrMerchDone: db "FAIR WINDS MATEY", 0
+StrHoldFull:  db "YER HOLD IS FULL", 0
+StrLackGold:  db "YE LACK THE GOLD", 0
+StrEscort:    db "HIS ESCORT SAILS IN!", 0
+StrRobbed:    db "NO QUARTER GIVEN!", 0
 
 StrRum:     db "RUM", 0
 StrSilk:    db "SILK", 0
