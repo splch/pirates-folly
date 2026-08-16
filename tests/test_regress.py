@@ -506,8 +506,11 @@ def dock_at_district(pb, s16, dx, dy):
                     continue
                 if tile(nx, ny, s16) >= 3:
                     continue
-                set16(mem, "wPosX", (nx * 8) << 4)
-                set16(mem, "wPosY", (ny * 8) << 4)
+                # retrying teleport: a one-shot write can be torn mid-frame
+                # and the collision check reverts it (surfaced when MainLoop
+                # timing shifted)
+                if not teleport(pb, nx, ny):
+                    continue
                 for _ in range(5):
                     pb.tick()
                 # a 1-tick press can land between joypad reads: hold for 3
@@ -733,8 +736,18 @@ def f2_storm_drift_range():
             wx, wy = cx * 20 + 10, cy * 18 + 9
             if tile(wx, wy, s16) >= 3:
                 continue                  # ship must stay in water
+            set16(mem, "wStormT", 0)      # clear the last sample's storm before
+            mem[syms["wEnemyActive"]] = 0  # hopping: its drift breaks the
+            mem[syms["wMerchActive"]] = 0  # teleport's exact-tile check
             if not teleport(pb, wx, wy):
                 continue
+            if mem[syms["wState"]] == 8:      # a merchant hailed mid-teleport:
+                press3(pb, "a")               # resolve the offer (buy or bust)
+                for _ in range(10):
+                    pb.tick()
+                press3(pb, "a")               # leave the result screen
+                for _ in range(10):
+                    pb.tick()
             # The teleport's own ticks may roll an encounter at a torn
             # intermediate position, so re-roll cleanly at the settled
             # target: clear explored/storm/enemy, invalidate the
@@ -744,6 +757,7 @@ def f2_storm_drift_range():
                 mem[syms["wExplored"] + i] = 0
             set16(mem, "wStormT", 0)
             mem[syms["wEnemyActive"]] = 0
+            mem[syms["wMerchActive"]] = 0  # a merchant suppresses all rolls
             set16(mem, "wMarkTX", 0xFFFF)
             mem[syms["wShipCX"]] = 0xFF     # force a cell re-entry: the tile
             mem[syms["wShipCY"]] = 0xFF     # cache alone only re-derives tiles
@@ -1056,11 +1070,25 @@ def _spawn_state():
         return (xs16(r1) & 0xFF) & 7 in (0, 1, 3, 4, 5, 7)
     return next(s for s in range(1, 0x10000) if good(s))
 
-# l in [12,48): a new-cell roll (<48) would spawn, the reduced revisit
-# roll must not
+# l in [32,48): above the merchant lane (12..31) — nothing spawns on a
+# revisit, though a new-cell roll (<48) would have
 _NO_ROLL = next(s for s in range(1, 0x10000)
-                if 12 <= (xs16(s) & 0xFF) < 48 and (xs16(s) >> 8) >= 3)
+                if 32 <= (xs16(s) & 0xFF) < 48 and (xs16(s) >> 8) >= 3)
 _SPAWN = _spawn_state()
+
+def _roll_state(lane_lo, lane_hi):
+    """wRngState whose revisit roll lands in [lane_lo, lane_hi) (no storm),
+    with a safe (non-west) spawn offset draw."""
+    for s in range(1, 0x10000):
+        r1 = xs16(s)
+        if not (lane_lo <= (r1 & 0xFF) < lane_hi) or (r1 >> 8) < 3:
+            continue
+        if (xs16(r1) & 0xFF) & 7 in (2, 6):   # PickSpawnSpot's offset draw
+            continue
+        return s
+    raise AssertionError("no such rng state")
+
+_MERCH = _roll_state(12, 32)             # merchant lane
 
 # wRngState is stored h-first (hl big-endian: rng.asm loads h from the
 # first byte), so set16 would write the state byte-swapped.
@@ -1191,6 +1219,184 @@ def r28_chart_marks_dug_isles():
     pb.stop()
     print("R28 chart marks dug isles with X: OK")
 
+# ----------------- R29/R30: merchant trade and plunder
+
+def _hail_merchant(pb, mem, rng=None):
+    """Teleport onto a water tile 16 px from the active merchant and wait
+    for the auto-hail (< 20 px). rng seeds the deal/rob rolls: it is written
+    AFTER the teleport's own cell roll, so nothing consumes it first."""
+    s16 = seed16(mem)
+    mxp, myp = w16(mem, "wMerchX") >> 4, w16(mem, "wMerchY") >> 4
+    for dx, dy in ((-16, 0), (16, 0), (0, -16), (0, 16)):
+        if tile((mxp + dx) // 8, (myp + dy) // 8, s16) < 3:
+            set16(mem, "wPosX", (mxp + dx) << 4)
+            set16(mem, "wPosY", (myp + dy) << 4)
+            break
+    else:
+        raise AssertionError("no water next to the merchant")
+    mem[syms["wEnemyActive"]] = 0        # the teleport's own cell roll
+    set16(mem, "wStormT", 0)
+    if rng is not None:
+        _set_rng(mem, rng)
+    for _ in range(30):
+        pb.tick()
+        if mem[syms["wState"]] == 8:
+            return
+    raise AssertionError("merchant never hailed")
+
+# rob outcome is the roll after the deal roll: odd high byte = escort
+_ROB_ESCORT = next(s for s in range(1, 0x10000) if (xs16(xs16(s)) >> 8) & 1)
+
+def r29_merchant_trade():
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    _hail_merchant(pb, mem)
+    good = mem[syms["wMerchGood"]]
+    qty = mem[syms["wMerchQty"]]
+    price = mem[syms["wMerchPrice"]]
+    assert 3 <= qty <= 6 and price in (2, 5, 7, 12), \
+        f"deal {qty}x good{good} @ {price}"
+    set16(mem, "wGold", 200)
+    press3(pb, "a")                      # buy the lot
+    for _ in range(10):                  # result screen renders over ~3 frames
+        pb.tick()
+    assert mem[syms["wMerchPhase"]] == 2, "no result screen"
+    assert w16(mem, "wGold") == 200 - qty * price, "wrong price charged"
+    assert mem[syms["wCargo"] + good] == qty, "goods not delivered"
+    press3(pb, "a")                      # leave the result screen
+    assert wait_state(pb, 2), "never back to sailing"
+    assert not mem[syms["wMerchActive"]], "merchant not consumed"
+    pb.stop()
+    print("R29 merchant hail + trade: OK")
+
+def r30_merchant_rob_escort():
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    _hail_merchant(pb, mem, rng=_ROB_ESCORT)
+    set16(mem, "wGold", 100)
+    press3(pb, "b")                      # rob the dog
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wMerchPhase"]] == 2, "no result screen"
+    g = w16(mem, "wGold")
+    assert 130 <= g <= 161, f"robbery paid {g - 100}"
+    assert read_text(mem, 0x9800 + 4 * 32, 19) == "HIS ESCORT SAILS IN"
+    assert mem[0x9800 + 4 * 32 + 19] == 67, "missing '!'"
+    press3(pb, "a")
+    assert wait_state(pb, 2), "never back to sailing"
+    # the escort spawn retries until its pick finds water
+    for _ in range(600):
+        pb.tick()
+        if mem[syms["wEnemyActive"]]:
+            break
+    assert mem[syms["wEnemyActive"]] == 1, "escort never sailed in"
+    assert not mem[syms["wIsGuardian"]], "escort should be a plain pirate"
+    pb.stop()
+    print("R30 merchant robbery + escort revenge: OK")
+
+# ----------------- R31: market prices drift between visits
+
+def r31_price_drift():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    dock_at_district(pb, s16, *find_dockable_port(s16))
+    press3(pb, "a")                      # TRADE (main menu item 0)
+    for _ in range(30):
+        pb.tick()
+    prices = set()
+    for drift in range(8):
+        mem[syms["wPriceDrift"]] = drift
+        mem[syms["wPortDirty"]] = 1
+        for _ in range(20):
+            pb.tick()
+        d = [mem[0x9800 + 6 * 32 + 9 + i] - 16 for i in range(3)]
+        assert all(0 <= x <= 9 for x in d), \
+            f"price column not rendered: {d} (latent de-clobber bug)"
+        prices.add(d[0] * 100 + d[1] * 10 + d[2])
+    assert len(prices) >= 2, f"prices never drift: {prices}"
+    pb.stop()
+    print(f"R31 market prices drift between visits: OK ({sorted(prices)})")
+
+# ----------------- R32: the dig is a ceremony, skippable
+
+def r32_dig_ceremony():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    s16 = seed16(mem)
+    ix, iy = mem[syms["wIsles"]], mem[syms["wIsles"] + 1]
+    spot = None
+    for ty in range(iy * 18, iy * 18 + 18):
+        for tx in range(ix * 20, ix * 20 + 20):
+            if tile(tx, ty, s16) >= 3:
+                continue
+            if any(tile(tx + ddx, ty + ddy, s16) >= 3
+                   for ddx, ddy in ((0, 1), (0, -1), (1, 0), (-1, 0))):
+                spot = (tx, ty)
+                break
+        if spot:
+            break
+    assert spot, "no beach-adjacent water in isle 0's cell"
+    mem[syms["wGuardMask"]] = 1          # guardian pre-sunk: no spawn race
+    assert teleport(pb, *spot), "teleport never stuck"
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wState"]] == 5, "dig didn't open"
+    assert mem[syms["wDigT"]] > 0, "no dig ceremony"
+    assert read_text(mem, 0x9800 + 4 * 32 + 2, 16) == "X MARKS THE SPOT"
+    press3(pb, "a")                       # skip to the reveal
+    for _ in range(10):                   # reveal screen renders over ~3 frames
+        pb.tick()
+    assert mem[syms["wDigT"]] == 0, "ceremony didn't skip"
+    assert read_text(mem, 0x9800 + 4 * 32 + 5, 11) == "YOU FOUND A"
+    press3(pb, "a")                       # back to sea
+    assert wait_state(pb, 2), "never back to sailing"
+    pb.stop()
+    print("R32 dig ceremony (knock, skip, reveal): OK")
+
+# ----------------- R33: SELECT mutes anywhere; re-rolls in the editor
+
+def r33_select_mute_and_reroll():
+    pb = boot()
+    mem = pb.memory
+    press3(pb, "select")                 # title screen: mute on
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wMuted"]] == 1, "SELECT didn't mute at the title"
+    press3(pb, "select")
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wMuted"]] == 0, "SELECT didn't unmute"
+    new_game(pb)
+    press3(pb, "select")                 # at sea: mute cuts the channels
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wMuted"]] == 1, "SELECT didn't mute at sea"
+    assert mem[0xFF12] == 0, "ch1 not silenced on mute"
+    press3(pb, "select")
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wMuted"]] == 0, "SELECT didn't unmute at sea"
+    press3(pb, "b")                      # quit to the seed editor
+    for _ in range(5):
+        pb.tick()
+    press3(pb, "b")
+    assert wait_state(pb, 0), "did not return to the editor"
+    before = [mem[syms["wSeedNib"] + i] for i in range(8)]
+    press3(pb, "select")                 # editor: re-roll, not mute
+    for _ in range(5):
+        pb.tick()
+    after = [mem[syms["wSeedNib"] + i] for i in range(8)]
+    assert after != before, "SELECT didn't re-roll the seed"
+    assert mem[syms["wMuted"]] == 0, "editor SELECT leaked into mute"
+    pb.stop()
+    print("R33 SELECT mute + seed re-roll: OK")
+
 if __name__ == "__main__":
     for fn in (r1_drag_symmetry, r2_r3_storm_collision_and_clear, r4_southern_sea,
                r5_diagonal_blit, r6_spawn_in_ocean, r7_los_despawn,
@@ -1203,6 +1409,9 @@ if __name__ == "__main__":
                r24_revisit_rolls_reduced, r25_pirates_scale_with_fragments,
                r26_best_haul_record, r27_chart_completion_bounty,
                r28_chart_marks_dug_isles,
+               r29_merchant_trade, r30_merchant_rob_escort,
+               r31_price_drift, r32_dig_ceremony,
+               r33_select_mute_and_reroll,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()

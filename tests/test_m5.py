@@ -126,12 +126,15 @@ print("guardian sunk, guardMask =", bin(gm))
 assert gm & 1, "guard bit not set"
 
 # now dock -> dig scene
-press("a", 60)
+press("a", 60)  # open the dig (ceremony: ~90 frames of digging)
 print("state after dock A:", mem[syms["wState"]])
 assert mem[syms["wState"]] == 5, "dig scene didn't open"
 fm = w16("wFragMask")
 print("fragMask =", bin(fm))
 assert fm & 1, "fragment not collected"
+press("a", 5)   # skip the ceremony to the reveal
+assert mem[syms["wDigT"]] == 0, "ceremony didn't skip to the reveal"
+assert mem[syms["wState"]] == 5, "reveal left the dig state"
 press("a", 60)  # leave dig scene
 assert mem[syms["wState"]] == 2, "dig scene didn't exit"
 print("dig scene: OK")
@@ -155,6 +158,7 @@ for _ in range(10):
 press("a", 60)
 print("state after 9th dig A:", mem[syms["wState"]])
 assert mem[syms["wState"]] == 5, "9th dig scene didn't open"
+press("a", 5)   # skip the ceremony to the reveal
 print("diag: curIsle", mem[syms["wCurIsle"]], "fragMask", hex(w16("wFragMask")), "final", mem[syms["wFinal"]])
 assert mem[syms["wFinal"]] >= 1, "final battle not triggered"
 press("a", 60)
