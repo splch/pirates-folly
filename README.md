@@ -47,7 +47,10 @@ then flash it to a cartridge or open it in any Game Boy emulator
 - **Spot ports from the sea**: beaches with plank-dock tiles are dockable.
   Trade four goods (rum, silk, spice, cannon), repair the hull, recruit crew,
   and ask the tavern for rumors — it knows the nearest port and the nearest
-  unclaimed Isle of Legend.
+  unclaimed Isle of Legend. The **shipyard** refits your ship for gold:
+  plating (+5 hull, twice), sails (+50% top speed), long guns (+40% reach).
+- **Win, and keep sailing.** The Treasure's curse: after victory, charted
+  waters roll encounters at full rate — a won sea never calms.
 - **Digging.** An isle's beach only gives up its fragment once its guardian
   is sunk.
 - **Merchants.** Lone sails hail you at close range: buy a small lot at half

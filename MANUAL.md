@@ -195,6 +195,9 @@ dock. Every port offers:
 * **TAVERN** — See below. Worth the price of admission alone.
 * **RECRUIT** — Hire able seamen, 5 gold a head. The more hands aboard,
   the faster your cannons reload. A well-manned ship fires fast.
+* **SHIPYARD** — Refit your ship. PLATING adds 5 hull (twice), SAILS
+  make her half again as fast, LONG GUNS reach half again as far.
+  Not cheap. Worth it.
 * **SAVE** — Record the voyage in the Captain's Log.
 * **SET SAIL** — Back to the horizon.
 
@@ -257,7 +260,9 @@ each tougher and quicker on the trigger than the last. Sink them all.
 There is no retreat, no repair, no mercy.
 
 Survive, and the Treasure — and your final haul of gold — is yours.
-The screen will say the rest.
+The screen will say the rest. And the sea remembers: a won sea never
+calms. Pirates prowl even your best-charted waters, as thick as the
+day you first sailed them. The Treasure's curse, they call it.
 
 ---
 
