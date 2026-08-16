@@ -651,8 +651,14 @@ MapRowAddr::
     add hl, bc
     ret
 
-; Copy a staged row from hl into the BG map: row (wStageRow & 31),
-; columns (wTileX & 31)..+20 wrapping within the row. clobbers all.
+; A full staged blit can exceed VBlank on CGB (tile + attr passes, col +
+; row, plus DMA/water/HUD), and VRAM writes landing in Mode 3 are silently
+; dropped — the clipped blit tail left stale tiles/attrs until the area
+; happened to be re-streamed. Poll STAT mode before every write instead:
+; bit 1 clear (mode 0/1) means VRAM is accessible, and mode 0 is always
+; followed by mode 2 (>= 20 M-cycles of access), so the write right after
+; the poll always lands. Falls through instantly in VBlank and with LCD
+; off (mode reads 0). Overruns then merely stretch into the visible frame.
 BlitRowPass:
     push hl                      ; src
     ld a, [wStageRow]
@@ -676,6 +682,9 @@ BlitRowPass:
     ld b, a
     ld c, a                      ; keep run1 for the wrap calc
 .r1
+    ldh a, [rSTAT]
+    and STAT_BUSY
+    jr nz, .r1
     ld a, [hli]
     ld [de], a
     inc de
@@ -692,6 +701,9 @@ BlitRowPass:
     sbc 0
     ld d, a
 .r2
+    ldh a, [rSTAT]
+    and STAT_BUSY
+    jr nz, .r2
     ld a, [hli]
     ld [de], a
     inc de
@@ -745,6 +757,9 @@ BlitColPass:
     ld b, a
     ld c, a                      ; keep run1 for the wrap calc
 .c1
+    ldh a, [rSTAT]
+    and STAT_BUSY
+    jr nz, .c1
     ld a, [hl]
     ld [de], a
     inc hl
@@ -767,6 +782,9 @@ BlitColPass:
     sbc HIGH(1024)
     ld d, a
 .c2
+    ldh a, [rSTAT]
+    and STAT_BUSY
+    jr nz, .c2
     ld a, [hl]
     ld [de], a
     inc hl

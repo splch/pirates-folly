@@ -241,7 +241,10 @@ SailVBlank::
     ldh [rSCX], a
     ld a, [wCamY]
     ldh [rSCY], a
-    ; staged tiles from the logic phase
+    call hOamDma                 ; DMA mid-frame garbles sprites: VBlank only
+    ; staged tiles from the logic phase. The blit loops poll STAT before
+    ; each write, so overrunning VBlank stretches into the visible frame
+    ; instead of dropping writes (see BlitRowPass).
     ld a, [wStagePend]
     and a
     jr z, .noPend
@@ -257,7 +260,6 @@ SailVBlank::
     xor a
     ld [wStagePend], a
 .noPend
-    call hOamDma
     call AnimWater
     call HudVBlank
     ret

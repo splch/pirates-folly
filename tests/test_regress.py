@@ -852,6 +852,72 @@ def r18_wreck_respawn_redraw():
     pb.stop()
     print("R18 wreck respawn redraws the visible window: OK")
 
+# ----------------- R19: CGB streaming never drops VRAM writes
+
+def r19_cgb_streaming_no_drops():
+    """VBlank overruns used to clip the staged blits (tile AND attr passes):
+    writes landing in Mode 3 are dropped, leaving stale tiles/palettes that
+    only healed when the area happened to be re-streamed. The blits now
+    poll STAT before each write, so overruns stretch harmlessly. Sail short
+    legs with full settles (lag-robust): every settled window must match
+    the reference exactly, tiles and CGB palette attrs."""
+    import shutil, tempfile
+    path = str(Path(tempfile.mkdtemp()) / "pf.gb")
+    shutil.copy(ROM, path)
+    pb = PyBoy(path, window="null", cgb=True)
+    pb.set_emulation_speed(0)
+    mem = pb.memory
+    for _ in range(150):
+        pb.tick()
+    press(pb, "start", 10)
+    press(pb, "a", 60)
+    s16 = seed16(mem)
+
+    def want_attr(t):                    # mirrors world.asm TileAttr
+        if t in (0, 13):
+            return 0
+        if t in (14, 3):
+            return 2
+        return 1 if t < 3 else 3
+
+    def check_window(tag):
+        tx0, ty0 = w16(mem, "wTileX"), w16(mem, "wTileY")
+        bad = []
+        for j in range(19):
+            base = 0x9800 + ((ty0 + j) & 31) * 32
+            for i in range(21):
+                addr = base + ((tx0 + i) & 31)
+                mem[0xFF4F] = 0
+                gt = mem[addr]
+                mem[0xFF4F] = 1
+                ga = mem[addr] & 7
+                mem[0xFF4F] = 0
+                wt = shown_tile(tx0 + i, ty0 + j, s16)
+                if gt != wt or ga != want_attr(wt):
+                    bad.append((tx0 + i, ty0 + j, gt, ga, wt, want_attr(wt)))
+        assert not bad, f"{tag}: {len(bad)} dropped/mismatched tiles, e.g. {bad[:4]}"
+
+    legs = [("up", 60), ("right", 60), ("up", 60), ("left", 60),
+            ("down", 60), ("right", 60), ("down", 60), ("left", 60),
+            ("up", 60), ("right", 60)]
+    for k, (btn, n) in enumerate(legs):
+        hold(pb, btn, n)
+        for _ in range(45):              # settle: all lag/blits catch up
+            pb.tick()
+        check_window(f"leg {k} {btn}")
+    for k in range(3):                   # diagonal stress: col+row same VBlank
+        pb.button_press("down")
+        pb.button_press("right")
+        for _ in range(60):
+            pb.tick()
+        pb.button_release("down")
+        pb.button_release("right")
+        for _ in range(45):
+            pb.tick()
+        check_window(f"diag leg {k}")
+    pb.stop()
+    print("R19 CGB streaming drops no writes: OK")
+
 # --------------------------------- F3: HUD stats line at sea
 
 def f3_hud_stats_line():
@@ -875,7 +941,8 @@ if __name__ == "__main__":
                r8_final_wave_returned, r9_r10_tavern, r11_r12_menu_and_gold,
                r13_boot_clears_state, r14_dig_no_cannon, r15_save_sets_has_save,
                r16_boot_clears_fire_cooldowns, r17_tavern_port_scan,
-               r18_wreck_respawn_redraw, f1_quit_confirm,
+               r18_wreck_respawn_redraw, r19_cgb_streaming_no_drops,
+               f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()
     print("ALL REGRESSION CHECKS PASSED")
