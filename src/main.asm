@@ -73,6 +73,8 @@ EntryPoint:
     ld [wBestGold], a
     ld [wBestGold+1], a
     ld [wCartDone], a
+    ld [wSaveSlot], a
+    ld [wSaveSeq], a
 .saveDone
 
     ; power-on WRAM is random on hardware (PyBoy zeroes it, emulators like
@@ -103,6 +105,8 @@ EntryPoint:
     ld [wPriceDrift], a
     ld a, PIRATE_FIRECOOL          ; sane default for hand-placed enemies
     ld [wEnemyFireRate], a
+    ld a, 25
+    ld [wEnemyLoot], a
     ld a, $FF                    ; MarkExplored tile cache: invalid
     ld [wMarkTX], a
     ld [wMarkTX+1], a
@@ -632,6 +636,8 @@ InitNewGame:
     jr nz, .clr
     ld a, PIRATE_FIRECOOL          ; sane default for hand-placed enemies
     ld [wEnemyFireRate], a         ; (AFTER .clr: the loop stores a)
+    ld a, 25
+    ld [wEnemyLoot], a
     ld a, 1
     ld [wNeedSpawn], a           ; pick a fresh spawn
     call ComputeIsles

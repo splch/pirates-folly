@@ -291,6 +291,8 @@ TileAttr:
     jr z, .ui                   ; port marker -> ink
     cp TILE_LET_X
     jr z, .ui                   ; chart X marker -> ink
+    cp TILE_SKULL
+    jr z, .ui                   ; chart skull marker -> ink
     cp TILE_DOCK
     jr z, .sand                 ; dock -> wood (sand palette)
     cp TILE_SAND
@@ -1223,10 +1225,20 @@ RenderChart:
     call IsIsleCell                ; a = isle index or $FF
     cp $FF
     jr z, .sample
+    ld b, a                        ; keep the index (TestFrag clobbers b)
+    push bc
     call TestFrag
+    pop bc
     and a
-    jr z, .sample
+    jr z, .notDug
     ld a, TILE_LET_X               ; fragment dug: X marks the spot
+    jr .put
+.notDug
+    ld a, b
+    call TestGuard
+    and a
+    jr nz, .sample                 ; cleared but undug: plain terrain
+    ld a, TILE_SKULL               ; guardian still watches these waters
     jr .put
 .sample
     ; sample cell center tile
@@ -1281,7 +1293,7 @@ RenderChart:
     inc a
     ld [wChX], a
     cp 16
-    jr nz, .colLoop
+    jp nz, .colLoop                ; skull markers grew the loop past jr range
     ld a, [wChY]
     inc a
     ld [wChY], a

@@ -38,6 +38,10 @@ wCandX::    db          ; candidate district under test
 wCandY::    db
 wNpFound:   db
 wPriceDrift:: db        ; bumps on every dock: prices drift between visits
+wSaveSlot:: db          ; which slot the next SaveGame writes (0/1)
+wSaveSeq::  db          ; rolling sequence: the newer save wins on load
+wSlot0Ok:   db          ; LoadGame probe results
+wSlot1Ok:   db
 wMerchPhase: db         ; 1 = offer shown, 2 = result shown
 wMerchGood:: db
 wMerchQty::  db
@@ -1678,7 +1682,8 @@ PrintPortName:
 
 DEF SAVE_MAGIC_0 EQU $53
 DEF SAVE_MAGIC_1 EQU $46
-DEF SAVE_VERSION EQU 5          ; v5: + wHullMax/wMaxVel/wBallLife. v4 rejected.
+DEF SAVE_VERSION EQU 6          ; v6: two rotating slots + sequence byte. v5 rejected.
+DEF SAVE_SLOT1 EQU $A070        ; slot 0 is $A000; records are 99 B ($70 slots)
 
 ; Copy b bytes from de to hl, advancing both. clobbers a, b, de, hl
 CopyToSRAM:
@@ -1711,7 +1716,14 @@ SaveGame::
 .bestDone
     ld a, $0A
     ld [$0000], a                  ; RAM enable
+    ; two rotating slots: one corrupted save never costs the whole voyage
+    ld a, [wSaveSlot]
+    and a
     ld hl, $A000
+    jr z, .haveBase
+    ld hl, SAVE_SLOT1
+.haveBase
+    push hl                        ; slot base
     ld a, SAVE_MAGIC_0
     ld [hli], a
     ld a, SAVE_MAGIC_1
@@ -1720,6 +1732,8 @@ SaveGame::
     ld [hli], a
     xor a
     ld [hli], a                    ; checksum placeholder
+    ld a, [wSaveSeq]
+    ld [hli], a
     ; data layout ($A004..$A061): seed(4) pos(4) gold+hull+crew+cargo(8)
     ; explored(32) lastport(2) fragmask+guardmask(4) final+won(2)
     ; portcells(32) bestgold(2) cartdone(1) upgrades(3)
@@ -1756,8 +1770,12 @@ SaveGame::
     ld de, wHullMax               ; 3 contiguous upgrade bytes
     ld b, 3
     call CopyToSRAM
-    ; checksum = sum of $A004..$A061
-    ld hl, $A004
+    ; checksum = sum of the 94 data bytes at slot base + 5
+    pop de                         ; slot base
+    ld h, d
+    ld l, e
+    ld bc, 5
+    add hl, bc
     ld c, 94
     xor a
 .sum
@@ -1765,7 +1783,15 @@ SaveGame::
     inc hl
     dec c
     jr nz, .sum
-    ld [$A003], a
+    ld hl, 3
+    add hl, de                     ; checksum lives at base + 3
+    ld [hl], a
+    ld a, [wSaveSeq]               ; roll the sequence and the slot
+    inc a
+    ld [wSaveSeq], a
+    ld a, [wSaveSlot]
+    xor 1
+    ld [wSaveSlot], a
     xor a
     ld [$0000], a                  ; RAM disable
     ld a, 1
@@ -1781,22 +1807,21 @@ CopyFromSRAM:
     jr nz, CopyFromSRAM
     ret
 
-; Validate + load save. Sets wHasSave (1 = loaded). Called at boot.
-LoadGame::
-    ld a, $0A
-    ld [$0000], a
-    ; magic + version
-    ld a, [$A000]
+; in: hl = slot base; out: a = 1 iff magic+version+checksum pass.
+; clobbers a, c, h, l
+ValidateSlot:
+    push hl
+    ld a, [hli]
     cp SAVE_MAGIC_0
-    jp nz, .fail
-    ld a, [$A001]
+    jr nz, .bad
+    ld a, [hli]
     cp SAVE_MAGIC_1
-    jp nz, .fail
-    ld a, [$A002]
+    jr nz, .bad
+    ld a, [hli]
     cp SAVE_VERSION
-    jp nz, .fail
-    ; checksum
-    ld hl, $A004
+    jr nz, .bad
+    inc hl                         ; checksum byte
+    inc hl                         ; sequence byte
     ld c, 94
     xor a
 .sum
@@ -1804,11 +1829,68 @@ LoadGame::
     inc hl
     dec c
     jr nz, .sum
-    ld hl, $A003
+    pop hl
+    push hl
+    inc hl
+    inc hl
+    inc hl                         ; stored checksum at base + 3
     cp [hl]
-    jp nz, .fail
-    ; load fields (hl walks $A004..$A05B; runs mirror SaveGame)
+    jr nz, .bad
+    pop hl
+    ld a, 1
+    ret
+.bad
+    pop hl
+    xor a
+    ret
+
+; Validate both slots and load the newest valid one. Sets wHasSave (1 =
+; loaded). Called at boot.
+LoadGame::
+    ld a, $0A
+    ld [$0000], a
+    ld hl, $A000
+    call ValidateSlot
+    ld [wSlot0Ok], a
+    ld hl, SAVE_SLOT1
+    call ValidateSlot
+    ld [wSlot1Ok], a
+    ld a, [wSlot0Ok]
+    and a
+    jr z, .noSlot0
+    ld a, [wSlot1Ok]
+    and a
+    jr z, .slot0                   ; only slot 0 is good
+    ld a, [SAVE_SLOT1 + 4]         ; both good: the higher sequence wins
     ld hl, $A004
+    sub [hl]                       ; seq1 - seq0 (8-bit; wraps at 256)
+    jr z, .slot0
+    bit 7, a                       ; negative: slot 0 is newer
+    jr z, .slot1
+.slot0
+    ld de, $A000
+    xor a
+    jr .load
+.noSlot0
+    ld a, [wSlot1Ok]
+    and a
+    jp z, .fail                    ; the copy block pushed .fail past jr range
+.slot1
+    ld de, SAVE_SLOT1
+    ld a, 1
+.load
+    xor 1
+    ld [wSaveSlot], a              ; next save goes to the other slot
+    ld h, d
+    ld l, e
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    ld a, [hl]                     ; sequence byte
+    ld [wSaveSeq], a
+    inc hl                         ; data starts at base + 5
+    ; load fields (hl walks the data; runs mirror SaveGame)
     ld de, wSeed
     ld b, 4
     call CopyFromSRAM

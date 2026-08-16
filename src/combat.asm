@@ -11,6 +11,7 @@ wEnemyY:        dw
 wEnemyHP::      db
 wEnemyFireCool:: db
 wEnemyFireRate:: db             ; per-enemy refire rate (scaled at spawn)
+wEnemyLoot::    db              ; plunder on sinking (set at spawn)
 wFireCool::     db
 wBallPActive::  db
 wBallPX:        dw
@@ -113,6 +114,10 @@ SpawnCheck::
     ld a, h
     cp 13                          ; storm ~5%
     call c, StartStorm
+    ld a, h
+    sub 13                         ; kraken lane 13..14 (~0.8%, deep water only)
+    cp 2
+    call c, SpawnKrakenIfDeep
     ret
 
 ; Re-entry roll for an already-charted cell: reduced odds (~1/4 of the
@@ -158,6 +163,10 @@ RevisitRoll::
     ld a, h
     cp b                           ; storm
     call c, StartStorm
+    ld a, h
+    sub b                          ; kraken lane: 2 values above the storm lane
+    cp 2
+    call c, SpawnKrakenIfDeep
     ret
 
 ; Spawn a pirate ship near the player, in open water. 8 candidate offsets:
@@ -333,6 +342,53 @@ SpawnEnemy::
     sub b                          ; >= 30 even at 9 fragments
     ld [wEnemyFireCool], a
     ld [wEnemyFireRate], a
+    call Rand16
+    ld a, l
+    and 31
+    add 15                         ; pirate plunder: 15..46
+    ld [wEnemyLoot], a
+    ret
+
+; The kraken rises only in deep water (TILE_DEEP under the ship): tougher
+; than any guardian, with a hoard to match.
+SpawnKrakenIfDeep:
+    ld a, [wShipX]
+    ld l, a
+    ld a, [wShipX+1]
+    ld h, a
+    REPT 3
+    srl h
+    rr l
+    ENDR
+    ld c, l
+    ld b, h                        ; bc = ship tile x
+    ld a, [wShipY]
+    ld l, a
+    ld a, [wShipY+1]
+    ld h, a
+    REPT 3
+    srl h
+    rr l
+    ENDR
+    ld e, l
+    ld d, h
+    call WorldTile
+    cp TILE_DEEP
+    ret nz                         ; coastal water: no kraken
+    call SpawnEnemy
+    ld a, [wEnemyActive]
+    and a
+    ret z                          ; spawn aborted (land)
+    ld a, 8
+    ld [wEnemyHP], a
+    ld a, 40
+    ld [wEnemyFireCool], a
+    ld [wEnemyFireRate], a
+    call Rand16
+    ld a, l
+    and 63
+    add 60                         ; kraken hoard: 60..123
+    ld [wEnemyLoot], a
     ret
 
 ; A merchant sail on the ring: becalmed, hails once, leaves after ~15 s.
@@ -1195,9 +1251,7 @@ UpdateBalls:
     call PlaySfx
     ld a, SFX_COIN
     call PlaySfx
-    call Rand16
-    and 31
-    add 15
+    ld a, [wEnemyLoot]
     ld b, a
     ld a, [wGold]
     add b

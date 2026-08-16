@@ -35,6 +35,10 @@ LoadTiles::
     ld de, $8000 + 15 * 16
     ld bc, 16
     call CopyVRAM
+    ld hl, SkullTile
+    ld de, $8000 + 68 * 16
+    ld bc, 16
+    call CopyVRAM
     ld hl, BallTile
     ld de, $8000 + 12 * 16
     ld bc, 16
@@ -769,4 +773,15 @@ SplashTile:
     dw `00000000
     dw `03300330
     dw `00000000
+    dw `00000000
+
+SECTION "Skull tile", ROMX, BANK[3]
+SkullTile:
+    dw `00000000
+    dw `03333300
+    dw `33333330
+    dw `33033033
+    dw `33333330
+    dw `03333300
+    dw `00330300
     dw `00000000

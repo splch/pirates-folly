@@ -60,6 +60,7 @@ DEF TILE_A        EQU 40      ; A-Z = 40-65
 DEF TILE_SLASH    EQU 66      ; '/'
 DEF TILE_BALL     EQU 12      ; cannonball
 DEF TILE_SPLASH   EQU 15      ; water splash / powder smoke burst
+DEF TILE_SKULL    EQU 68      ; chart: isle with a living guardian
 
 ; --- Ports & economy (M3) ---
 DEF PMAIN    EQU 0
