@@ -39,8 +39,10 @@ then flash it to a cartridge or open it in any Game Boy emulator
   a new voyage with the edited seed; **START** continues a saved one (the game
   autosaves whenever you dock or leave port, and on victory).
 - **Chart everything.** Sailing into a new cell inks it into your map. Newly
-  charted waters may hold pirates (~1 in 5, ≈19%) or storms — isle cells roll no
-  random encounters, but their guardians will find you.
+  charted waters may hold pirates (~1 in 5, ≈19%) or storms — and even
+  charted waters stay a little dangerous (re-rolls at ~¼ rate). Pirates grow
+  bolder with every fragment you carry; isle cells roll no random encounters,
+  but their guardians will find you.
 - **Spot ports from the sea**: beaches with plank-dock tiles are dockable.
   Trade four goods (rum, silk, spice, cannon), repair the hull, recruit crew,
   and ask the tavern for rumors — it knows the nearest port and the nearest
@@ -50,7 +52,8 @@ then flash it to a cartridge or open it in any Game Boy emulator
 - **Hull is life.** Ramming land, enemy shot, and storm-tossed drifting all
   cost hull (watch the **H** reading at the bottom of the screen, beside your
   gold and fragment count). At 0 you wreck: lose half your gold and wake in
-  open water with a patched hull.
+  open water with a patched hull. Your **greatest gold haul** is remembered on
+  the seed screen — and a fully inked chart pays a 500-gold bounty.
 
 See [MANUAL.md](MANUAL.md) for the full captain's handbook.
 

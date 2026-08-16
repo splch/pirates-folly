@@ -133,6 +133,10 @@ inked in — sea and land — while the rest stays blank parchment.
   need only visit a port once to remember it forever.
 * Your voyage's seed is printed along the bottom — note it down, and you
   can sail this same sea again (or dare a friend to).
+* Isles you have dug bare are marked with an **X**. X marks the spot —
+  and the proof you took it.
+* Ink in every last cell of the chart and a **cartographer's bounty** of
+  500 gold is yours, once per voyage.
 * Press A, B, or START to return to the helm.
 
 Chart everything. A blank chart makes a poor pirate and a rich undertaker.
@@ -144,7 +148,9 @@ Chart everything. A blank chart makes a poor pirate and a rich undertaker.
 **Pirates.** Rival scoundrels prowl newly charted waters — perhaps one
 voyage in five. They will close with you and open fire. Press **A** to
 answer with your own broadside; your gunners aim true at any enemy in
-sight. Sink a pirate and plunder his gold.
+sight. Sink a pirate and plunder his gold. Even well-charted waters are
+never wholly safe: old haunts turn up the occasional scoundrel, and the
+more chart fragments you carry, the bolder every pirate becomes.
 
 **Storms.** Dark weather blows up without warning and drags the ship
 where it will — hard enough that a bold captain can ride the blow like a
@@ -256,8 +262,10 @@ Your voyage is recorded automatically:
 
 To continue a recorded voyage, press **START** on the seed screen. The
 Log keeps your seed, your gold, your cargo, your hull and crew, your
-chart, your fragments, and every port you've ever called at. The isles
-themselves need no remembering — the seed always knows where they lie.
+chart, your fragments, and every port you've ever called at. It also
+remembers your **greatest gold haul** — shown as BEST on the seed screen,
+for captains who measure themselves. The isles themselves need no
+remembering — the seed always knows where they lie.
 
 ---
 
@@ -274,6 +282,8 @@ themselves need no remembering — the seed always knows where they lie.
 * A wreck costs half your gold. Gold spent in port, on the other hand,
   cannot be lost at sea.
 * Twenty hands reload your broadside a third faster than five.
+* The sea learns your name. Every fragment you hold makes pirates hit
+  harder and shoot faster — chart the easy waters first.
 
 ---
 
