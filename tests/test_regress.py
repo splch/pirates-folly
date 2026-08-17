@@ -47,6 +47,12 @@ Covered fixes:
   R42 enemy cannonballs die on land like the player's
   R43 text screens entered from the sea reset scroll
   R44 a port shore is a docking bump, not a wreck
+  R45 merchant buy clamps the lot to hold space
+  R46 merchant buy needs gold and hold space
+  R47 unmute resumes the music
+  R48 an old save version is rejected, both slots
+  R49 the frame budget holds under worst-case load
+  R50 isle cells are always distinct (ComputeIsles dedup)
 
 Freebies:
   F1  B-at-sea quit requires a confirming second press
@@ -211,13 +217,28 @@ def press3(pb, btn):
 
 
 def teleport(pb, tx, ty, tries=8):
-    """Teleport to a tile, surviving torn mid-frame position writes (the
-    collision check can revert a torn write). Returns success."""
+    """Teleport to a tile. Writes X and Y in separate ticks: a single
+    set16 pair can land mid-ComputeShipPx and tear (wShipX/Y from mixed
+    positions), and when the per-frame work is uniform the tear is
+    deterministic, so retrying the same write never converges. With a tick
+    in between, the first frame runs on the torn position (a collision
+    revert there is harmless — it restores the torn position), and the
+    second frame sees the complete target. Returns success."""
     mem = pb.memory
+    def calm():
+        # the torn intermediate position rolls encounters like any cell
+        # entry; a storm there would drift the ship off the target before
+        # the check (and a merchant hail would freeze it in the parley)
+        set16(mem, "wStormT", 0)
+        mem[syms["wEnemyActive"]] = 0
+        mem[syms["wMerchActive"]] = 0
     for _ in range(tries):
         set16(mem, "wPosX", (tx * 8) << 4)
+        pb.tick()
+        calm()
         set16(mem, "wPosY", (ty * 8) << 4)
         pb.tick()
+        calm()                  # the target cell's own roll lands next frame
         if (w16(mem, "wShipX") >> 3, w16(mem, "wShipY") >> 3) == (tx, ty):
             return True
     return False
@@ -1804,6 +1825,188 @@ def r43_text_screens_reset_scroll():
     pb.stop()
     print("R43 text screens reset scroll: OK")
 
+# ----------------- R45/R46: merchant buy edge cases (hold space, gold)
+
+def r45_merchant_buy_clamps_to_hold():
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    _hail_merchant(pb, mem)
+    good = mem[syms["wMerchGood"]]
+    qty = mem[syms["wMerchQty"]]          # 3..6
+    price = mem[syms["wMerchPrice"]]
+    mem[syms["wCargo"]] = 48             # 2 barrels of space, lot is bigger
+    before = mem[syms["wCargo"] + good]
+    set16(mem, "wGold", 200)
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wCargo"] + good] == before + 2, \
+        f"lot not clamped: +{mem[syms['wCargo'] + good] - before}, want +2"
+    assert w16(mem, "wGold") == 200 - 2 * price, \
+        f"charged {200 - w16(mem, 'wGold')}, want {2 * price} (clamped lot)"
+    pb.stop()
+    print("R45 merchant buy clamps the lot to hold space: OK")
+
+def r46_merchant_buy_needs_gold_and_space():
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    _hail_merchant(pb, mem)
+    # too poor: the cheapest lot is 3 x 2 = 6 gold
+    set16(mem, "wGold", 1)
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert w16(mem, "wGold") == 1, "charged despite being poor"
+    assert read_text(mem, 0x9800 + 4 * 32, 16) == "YE LACK THE GOLD"
+    pb.stop()
+    pb = _sail_into_marked_cell(_MERCH)
+    mem = pb.memory
+    assert mem[syms["wMerchActive"]] == 1, "merchant never spawned"
+    _hail_merchant(pb, mem)
+    mem[syms["wCargo"]] = 50            # CARGO_MAX: hold completely full
+    set16(mem, "wGold", 200)
+    press3(pb, "a")
+    for _ in range(10):
+        pb.tick()
+    assert w16(mem, "wGold") == 200, "charged with a full hold"
+    assert read_text(mem, 0x9800 + 4 * 32, 16) == "YER HOLD IS FULL"
+    pb.stop()
+    print("R46 merchant buy needs gold and hold space: OK")
+
+# ----------------- R47: unmute resumes the music
+
+def r47_unmute_resumes_music():
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    press3(pb, "select")                 # mute at sea
+    for _ in range(5):
+        pb.tick()
+    assert mem[syms["wMuted"]] == 1
+    assert mem[0xFF12] == 0, "ch1 not silenced on mute"
+    press3(pb, "select")                 # unmute
+    for _ in range(60):                  # Wellerman eighth note = 12 frames
+        pb.tick()
+        if mem[0xFF12] == 0xF3:
+            break
+    assert mem[0xFF12] == 0xF3, "melody never resumed after unmute"
+    pb.stop()
+    print("R47 unmute resumes the music: OK")
+
+# ----------------- R48: an old save version is rejected, both slots
+
+def r48_old_save_version_rejected():
+    import shutil
+    import tempfile
+    path = str(Path(tempfile.mkdtemp()) / "pf.gb")
+    shutil.copy(ROM, path)
+    pb = PyBoy(path, window="null")
+    pb.set_emulation_speed(0)
+    mem = pb.memory
+    for _ in range(150):
+        pb.tick()
+    new_game(pb)
+    s16 = seed16(mem)
+    dock_at_district(pb, s16, *find_dockable_port(s16))  # save -> slot 0
+    press3(pb, "b")                                       # set sail -> slot 1
+    assert wait_state(pb, 2)
+    pb.stop()
+    ram = bytearray(open(path + ".ram", "rb").read())
+    assert ram[2] == 6 and ram[0x70 + 2] == 6, "expected two v6 slots"
+    ram[2] = ram[0x70 + 2] = 5            # both slots: previous version
+    open(path + ".ram", "wb").write(ram)
+    pb2 = PyBoy(path, window="null")
+    pb2.set_emulation_speed(0)
+    mem2 = pb2.memory
+    for _ in range(150):
+        pb2.tick()
+    assert mem2[syms["wHasSave"]] == 0, "old-version save was loaded"
+    pb2.stop()
+    print("R48 old save version rejected (both slots): OK")
+
+# ----------------- R50: isle cells are always distinct
+
+# ComputeIsles once accepted duplicate cells (seed16 0x0064 put isles 1 and
+# 2 in the same cell — unreachable guardian, unwinnable sea). These seeds
+# are the preimages of the known-colliding folded seeds, found by inverting
+# mix16 (unmix16 below).
+def _un_shl8(y): return (y ^ (y << 8)) & 0xFFFF
+def _un_shr9(y):
+    y ^= y >> 9
+    y ^= y >> 18
+    return y & 0xFFFF
+def _un_shl7(y):
+    y ^= (y << 7) & 0xFFFF
+    y ^= (y << 14) & 0xFFFF
+    return y & 0xFFFF
+def _un_shr8(y): return (y ^ (y >> 8)) & 0xFFFF
+def unmix16(y):
+    return _un_shr8(_un_shl7(_un_shr9(_un_shl8(y))))
+
+def r50_isle_cells_distinct():
+    for target in (0x0064, 0x006E, 0x00D1, 0x00DB):
+        pre = unmix16(target)
+        assert mix16(pre) == target
+        pb = boot()
+        new_game(pb, seed=pre)
+        mem = pb.memory
+        got = [(mem[syms["wIsles"] + 2 * k], mem[syms["wIsles"] + 2 * k + 1])
+               for k in range(9)]
+        assert len(set(got)) == 9, f"seed16 {target:04X}: isles collide {got}"
+        # the relocated isle must still be land-bearing and diggable
+        for cx, cy in got:
+            assert any(tile(cx * 20 + ox, cy * 18 + oy, target) >= 3
+                       for ox, oy in ((10, 9), (5, 5), (15, 13))), \
+                f"isle at {(cx, cy)} has no land"
+        pb.stop()
+    print("R50 isle cells always distinct (dedup + fallback): OK")
+
+# ----------------- R49: the frame budget holds under worst-case load
+
+def r49_frame_budget_under_load():
+    """One MainLoop iteration per emulated frame, even under worst-case
+    logic load: fast diagonal scroll (column AND row staged per crossing),
+    a storm dragging the ship, an enemy shooting, and a merchant nearby.
+    Detection needs no instrumentation: hFrameCounter increments once per
+    MainLoop iteration, pb.frame_count once per emulated frame."""
+    pb = boot()
+    mem = pb.memory
+    new_game(pb)
+    # the spawn point is guaranteed open ocean (FindSpawn's 24x12 water runs)
+    set16(mem, "wStormT", 2000)
+    mem[syms["wStormDX"]] = 8
+    mem[syms["wStormDY"]] = 8
+    set16(mem, "wEnemyX", (w16(mem, "wShipX") + 60) << 4)
+    set16(mem, "wEnemyY", w16(mem, "wShipY") << 4)
+    mem[syms["wEnemyHP"]] = 5
+    mem[syms["wEnemyFireCool"]] = 50
+    mem[syms["wIsGuardian"]] = 0
+    mem[syms["wLosT"]] = 16
+    mem[syms["wEnemyActive"]] = 1
+    set16(mem, "wMerchX", (w16(mem, "wShipX") + 100) << 4)
+    set16(mem, "wMerchY", w16(mem, "wShipY") << 4)
+    set16(mem, "wMerchT", 2000)
+    mem[syms["wMerchActive"]] = 1
+    pb.button_press("down")
+    pb.button_press("right")
+    for chunk in range(3):
+        f0 = pb.frame_count
+        g0 = mem[syms["hFrameCounter"]]
+        for i in range(200):
+            pb.tick()
+            if i % 60 == 0:
+                mem[syms["wHull"]] = 20   # no wreck (its pause parks MainLoop)
+        df = pb.frame_count - f0
+        dg = (mem[syms["hFrameCounter"]] - g0) & 0xFF
+        assert df == 200 and dg == df, \
+            f"frame budget blown: game ran {dg} of {df} frames (chunk {chunk})"
+    pb.button_release("down")
+    pb.button_release("right")
+    pb.stop()
+    print("R49 frame budget holds under worst-case load: OK")
+
 # ----------------- R44: a port shore is a docking bump, not a wreck
 
 def r44_port_shore_is_soft():
@@ -1880,6 +2083,12 @@ if __name__ == "__main__":
                r42_enemy_shot_cant_cross_land,
                r43_text_screens_reset_scroll,
                r44_port_shore_is_soft,
+               r45_merchant_buy_clamps_to_hold,
+               r46_merchant_buy_needs_gold_and_space,
+               r47_unmute_resumes_music,
+               r48_old_save_version_rejected,
+               r49_frame_budget_under_load,
+               r50_isle_cells_distinct,
                f1_quit_confirm,
                f2_storm_drift_range, f3_hud_stats_line):
         fn()

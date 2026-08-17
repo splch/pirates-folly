@@ -10,12 +10,12 @@ OBJ := $(SRC:src/%.asm=build/%.o)
 
 pirates_folly.gb: $(OBJ)
 	$(RGBLINK) -o $@ -n build/pirates_folly.sym -m build/pirates_folly.map -p 0xFF $(OBJ)
-	$(RGBFIX) -v -p 0xFF -t "PIRATES FOLLY" -c -m MBC5+RAM+BATTERY -r 3 $@
+	$(RGBFIX) -v -p 0xFF -t "PIRATES FOLLY" -c -m MBC5+RAM+BATTERY -r 2 $@
 
-build/%.o: src/%.asm src/defs.inc src/text.inc include/hardware.inc | build
-	$(RGBASM) -o $@ -I include/ -I src/ -Wall $<
+build/%.o: src/%.asm | build
+	$(RGBASM) -o $@ -I include/ -I src/ -Wall -Wextra -Werror=truncation -Werror=unmapped-char -M build/$*.d -MG -MP -MQ $@ $<
 
-build/sgb.o: src/sgb_day.inc src/sgb_night.inc
+# Auto-generated header deps (-M -MG -MP) replace hand-listed prerequisites.
 
 # Regenerate the SGB border data after editing the art (needs numpy):
 src/sgb_day.inc: res/sgb_day.png tools/png2sgb.py
@@ -29,4 +29,10 @@ build:
 clean:
 	rm -rf build pirates_folly.gb
 
-.PHONY: clean
+check: pirates_folly.gb
+	for t in tests/test_*.py; do echo "== $$t"; python3 "$$t" || exit 1; done
+	python3 tests/lint_worlds.py
+
+.PHONY: clean check
+
+-include build/*.d

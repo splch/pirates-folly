@@ -18,9 +18,21 @@ wStageColAttrs: ds 19
 wStageCol:      dw          ; world tile column of staged column
 wStageRow:      db          ; world tile row of staged row
 wStageColY:     db          ; wTileY (low byte) when the column was staged:
-                            ; CheckStream stages X before updating wTileY on
-                            ; diagonal crossings, and BlitColStage runs a
-                            ; frame later — the live wTileY would be wrong
+                            ; the blit runs at least a frame later (two when
+                            ; generation is sliced) — the live wTileY may
+                            ; have advanced again by then
+wCrossCol::     dw          ; CheckStream: queued column crossing (high byte
+wCrossRow::     dw          ;   $FF = empty); same for the row crossing
+wGenK0::        db          ; GenXTiles: first tile index of this slice
+wGenK1::        db          ; GenXTiles: end tile index (exclusive)
+wStageBaseX::   dw          ; wTileX at row-stage prefill time: sliced halves
+wStageBaseY::   dw          ; wTileY at col-stage prefill time — the camera
+                            ; may advance between halves, so tiles must NOT
+                            ; read the live camera position
+wStageLatX:     db          ; lattice ix0/iy0 at prefill time (wIX0/wIY0 are
+wStageLatY:     db          ;   clobbered by WorldTile between halves)
+wStageRowH:     db          ; staged row's high byte (wGRrowH is clobbered
+                            ;   by WorldTile between halves too)
 wSpX:           dw          ; FindSpawn candidate tile x
 wSpY:           db          ; FindSpawn candidate row
 wSpYC:          db          ; FindSpawn vertical-run cursor
@@ -107,22 +119,27 @@ LatHash:
     ld a, l
     ret
 
+PUSHS "MulMag table", ROM0, ALIGN[8]
+; (mag * frac) >> 3 for all 256x8 inputs: page-aligned so the lookup is
+; addr = tab + frac*256 + mag. 2 KB of ROM to make Bilerp4 ~3x cheaper —
+; diagonal-scroll generation was overrunning the frame (R49).
+MULMAG_TAB:
+FOR f, 8
+    FOR m, 256
+        db (m * f) >> 3
+    ENDR
+ENDR
+POPS
+
 ; in: a = magnitude (0..255), c = frac (0..7); out: a = (mag * frac) >> 3
-; clobbers: d, e, h, l
+; clobbers: a, h, l
 MulMag:
-    ld d, 0
-    ld e, a
-    ld hl, 0
+    ld l, a
+    ld h, HIGH(MULMAG_TAB)
     ld a, c
-    and a
-    jr z, .shift
-.mul
-    add hl, de
-    dec a
-    jr nz, .mul
-.shift
-    SR16 h, l, 3
-    ld a, l
+    add h
+    ld h, a
+    ld a, [hl]
     ret
 
 ; Unsigned lerp: in: b = base, a = other, c = frac (0..7)
@@ -348,14 +365,19 @@ DockTileIfPort::
     ld a, TILE_DOCK
     ret
 
-; in: de = world tile row (0..287). Fills wStageRowTiles with 21 tiles
-; for columns wTileX..wTileX+20.
-GenRowStage::
+; in: de = world tile row (0..287). Lattice prefill for a row stage:
+; sets wStageRow/wGRrow/wFY/wIY0 and hashes wLatTop/wLatBot.
+GenRowPrefill::
     ld a, e
     ld [wStageRow], a            ; low byte: &31 works (256 mod 32 = 0)
     ld [wGRrow], a
     ld a, d
     ld [wGRrowH], a
+    ld [wStageRowH], a
+    ld a, [wTileX]
+    ld [wStageBaseX], a
+    ld a, [wTileX+1]
+    ld [wStageBaseX+1], a
     ld a, e
     and 7
     ld [wFY], a
@@ -372,6 +394,7 @@ GenRowStage::
     SR16 h, l, 3
     ld a, l
     ld [wIX0], a
+    ld [wStageLatX], a
     ld a, [wTileX]
     add 20
     ld l, a
@@ -424,20 +447,43 @@ GenRowStage::
     dec a
     ld [wJCount], a
     jr nz, .hashLoop
-    ; per tile: fx and the lattice offset j advance incrementally
-    ; (fx cycles 0..7; j increments whenever fx wraps)
-    xor a
+    ret
+
+; Row tiles wGenK0..wGenK1-1 into the staging buffers (prefill must run
+; first — possibly a frame earlier, so every input WorldTile could have
+; clobbered is re-derived from stage state here). fx/j are derived
+; directly for wGenK0, then step incrementally (fx wraps -> j++).
+GenRowTiles::
+    ld a, [wStageRow]              ; the row's vertical frac is constant —
+    and 7                          ; prefill's wFY is clobbered by WorldTile
+    ld [wFY], a                    ; between halves, so re-derive it here
+    ld a, [wStageRow]              ; same for wGRrow/wGRrowH (detail + dock
+    ld [wGRrow], a                 ; hashes read them per tile)
+    ld a, [wStageRowH]
+    ld [wGRrowH], a
+    ld a, [wGenK0]
     ld [wK], a
-    ld [wJ], a
-    ld a, [wTileX]
+    ld c, a
+    ld a, [wStageBaseX]
+    add c
+    ld l, a
+    ld a, [wStageBaseX+1]
+    adc 0
+    ld h, a                        ; hl = baseX + k0
+    ld a, l
     and 7
     ld [wFX], a
+    SR16 h, l, 3
+    ld a, l
+    ld hl, wStageLatX
+    sub [hl]
+    ld [wJ], a                     ; j for k0
 .tileLoop
-    ld a, [wTileX]
+    ld a, [wStageBaseX]
     ld hl, wK
     add a, [hl]
     ld [wWX], a
-    ld a, [wTileX+1]
+    ld a, [wStageBaseX+1]
     adc 0
     ld [wWX+1], a
     ld a, [wJ]                     ; j = (wx>>3) - ix0
@@ -483,13 +529,25 @@ GenRowStage::
     ld a, [wK]
     inc a
     ld [wK], a
-    cp 21
+    ld hl, wGenK1
+    cp [hl]
     jr nz, .tileLoop
     ret
 
-; in: de = world tile column (0..319). Fills wStageColTiles with 19 tiles
-; for rows wTileY..wTileY+18.
-GenColStage::
+; in: de = world tile row (0..287). Full row stage: fills wStageRowTiles
+; with 21 tiles for columns wTileX..wTileX+20 (SailFillScreen: LCD off, so
+; the frame budget doesn't matter).
+GenRowStage::
+    call GenRowPrefill
+    xor a
+    ld [wGenK0], a
+    ld a, 21
+    ld [wGenK1], a
+    jp GenRowTiles
+
+; in: de = world tile column (0..319). Lattice prefill for a column stage:
+; sets wStageCol/wWX/wFX/wIX0 and hashes wLatTop/wLatBot.
+GenColPrefill::
     ld a, e
     ld [wStageCol], a
     ld [wWX], a
@@ -497,6 +555,9 @@ GenColStage::
     ld [wStageCol+1], a
     ld a, [wTileY]
     ld [wStageColY], a         ; blit base row (see wStageColY)
+    ld [wStageBaseY], a
+    ld a, [wTileY+1]
+    ld [wStageBaseY+1], a
     ld a, e
     and 7
     ld [wFX], a                  ; fixed horizontal frac
@@ -515,6 +576,7 @@ GenColStage::
     SR16 h, l, 3
     ld a, l
     ld [wIY0], a
+    ld [wStageLatY], a
     ld a, [wTileY]
     add 18
     ld l, a
@@ -567,20 +629,42 @@ GenColStage::
     dec a
     ld [wJCount], a
     jr nz, .hashLoop
-    ; per tile row: fy and the lattice offset j advance incrementally
-    ; (fy cycles 0..7; j increments whenever fy wraps)
-    xor a
+    ret
+
+; Column tiles wGenK0..wGenK1-1 into the staging buffers (prefill first;
+; every input WorldTile could have clobbered is re-derived from stage
+; state). fy/j are derived directly for wGenK0, then step incrementally.
+GenColTiles::
+    ld a, [wStageCol]              ; the column's horizontal frac is constant
+    and 7                          ; — re-derive it (see GenRowTiles)
+    ld [wFX], a
+    ld a, [wStageCol]              ; wWX too: the detail/dock hashes read it
+    ld [wWX], a                    ; per tile, and WorldTile clobbered it
+    ld a, [wStageCol+1]            ; between halves
+    ld [wWX+1], a
+    ld a, [wGenK0]
     ld [wK], a
-    ld [wJ], a
-    ld a, [wTileY]
+    ld c, a
+    ld a, [wStageBaseY]
+    add c
+    ld l, a
+    ld a, [wStageBaseY+1]
+    adc 0
+    ld h, a                        ; hl = baseY + k0
+    ld a, l
     and 7
     ld [wFY], a
+    SR16 h, l, 3
+    ld a, l
+    ld hl, wStageLatY
+    sub [hl]
+    ld [wJ], a                     ; j for k0
 .tileLoop
-    ld a, [wTileY]
+    ld a, [wStageBaseY]
     ld hl, wK
     add a, [hl]
     ld [wGRrow], a               ; wy low byte (detail hash)
-    ld a, [wTileY+1]
+    ld a, [wStageBaseY+1]
     adc 0
     ld [wGRrowH], a              ; wy high byte (rows 256-287)
     ld a, [wJ]                   ; j = (wy>>3) - iy0
@@ -626,9 +710,19 @@ GenColStage::
     ld a, [wK]
     inc a
     ld [wK], a
-    cp 19
+    ld hl, wGenK1
+    cp [hl]
     jr nz, .tileLoop
     ret
+
+; in: de = world tile column (0..319). Full column stage (LCD off only).
+GenColStage::
+    call GenColPrefill
+    xor a
+    ld [wGenK0], a
+    ld a, 19
+    ld [wGenK1], a
+    jp GenColTiles
 
 ; ---------------------------------------------------------------------------
 ; VBlank blits of staged tiles (fast: <= 21 VRAM writes)
@@ -667,8 +761,9 @@ BlitRowPass:
     ld a, [wStageRow]
     and 31
     call MapRowAddr
-    ld a, [wTileX]
-    and 31
+    ld a, [wStageBaseX]          ; prefill-time camera column: sliced
+    and 31                       ; generation blits frames later, and the
+                                 ; live wTileX may have advanced since
     ld c, a
     ld b, 0
     add hl, bc

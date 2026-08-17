@@ -148,20 +148,31 @@ ANGLES = [(100, 0), (0, 100), (-100, 0), (0, -100), (70, 70), (-70, -70)]
 print("pirate duels (stationary player):")
 res = [duel(3, 90, dx, dy, "pirate") for dx, dy in ANGLES]
 res = [r for r in res if r]
-if res:
-    losses = sorted(r[1] for r in res)
-    times = sorted(r[0] for r in res)
-    print(f"  -> hull lost min/med/max: {losses[0]}/{losses[len(losses)//2]}/{losses[-1]}")
-    print(f"  -> frames-to-sink min/med/max: {times[0]}/{times[len(times)//2]}/{times[-1]} "
-          f"(~{times[len(times)//2]//60}s)")
+assert res, "no pirate duel completed"
+losses = sorted(r[1] for r in res)
+times = sorted(r[0] for r in res)
+print(f"  -> hull lost min/med/max: {losses[0]}/{losses[len(losses)//2]}/{losses[-1]}")
+print(f"  -> frames-to-sink min/med/max: {times[0]}/{times[len(times)//2]}/{times[-1]} "
+      f"(~{times[len(times)//2]//60}s)")
+# balance bounds (measured medians: hull 1, ~71f): a tuning regression
+# (fire rates, HP, reload) should trip these long before players notice
+assert losses[len(losses)//2] <= 4, \
+    f"pirate hull loss median {losses[len(losses)//2]} > 4"
+assert times[len(times)//2] <= 240, \
+    f"pirate time-to-sink median {times[len(times)//2]}f > 240f"
 print("guardian duels (stationary player):")
 gres = [duel(5, 60, dx, dy, "guardian") for dx, dy in ANGLES]
 gres = [r for r in gres if r]
-if gres:
-    losses = sorted(r[1] for r in gres)
-    times = sorted(r[0] for r in gres)
-    print(f"  -> hull lost min/med/max: {losses[0]}/{losses[len(losses)//2]}/{losses[-1]}")
-    print(f"  -> frames-to-sink min/med/max: {times[0]}/{times[len(times)//2]}/{times[-1]} "
-          f"(~{times[len(times)//2]//60}s)")
+assert gres, "no guardian duel completed"
+losses = sorted(r[1] for r in gres)
+times = sorted(r[0] for r in gres)
+print(f"  -> hull lost min/med/max: {losses[0]}/{losses[len(losses)//2]}/{losses[-1]}")
+print(f"  -> frames-to-sink min/med/max: {times[0]}/{times[len(times)//2]}/{times[-1]} "
+      f"(~{times[len(times)//2]//60}s)")
+# measured medians: hull 2, ~119f
+assert losses[len(losses)//2] <= 6, \
+    f"guardian hull loss median {losses[len(losses)//2]} > 6"
+assert times[len(times)//2] <= 360, \
+    f"guardian time-to-sink median {times[len(times)//2]}f > 360f"
 pb.stop(save=False)
-print("TUNING DATA COMPLETE")
+print("TUNING DATA COMPLETE — balance bounds PASS")

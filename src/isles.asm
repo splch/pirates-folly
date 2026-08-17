@@ -25,6 +25,7 @@ wBestK:      db
 wBestIsle::  db           ; isle index of nearest unclaimed (tavern rumor)
 wDigT::      db           ; dig-ceremony frames left (0 = reveal shown)
 wDigCount:   db           ; fragment count saved for the reveal
+wFFStash:    dw           ; FallbackFind: first distinct cell seen
 
 SECTION "Isles", ROMX, BANK[3]
 
@@ -126,12 +127,20 @@ ComputeIsles::
     ld [wCandY], a                 ; cy
     call CellHasLand
     and a
-    jr nz, .accept
+    jr z, .nextTry
+    call IsDupCell                 ; two isles must never share a cell —
+    and a                          ; IsIsleCell returns the first match,
+    jr z, .accept                  ; so a duplicate's guardian/fragment
+    ; would be unreachable (unwinnable sea)
+.nextTry
     ld a, [wBestK]
     inc a
     ld [wBestK], a
     cp 6
     jr nz, .try
+    ; every attempt was landless or a duplicate: linear scan from the
+    ; candidate for (land && distinct), then (distinct) as a last resort
+    call FallbackFind
 .accept
     ; store isle k
     ld a, [wChX]
@@ -155,6 +164,83 @@ ComputeIsles::
 PUSHS "Isle land-sample offsets", ROMX, BANK[3]
 CHL_OFFSETS: db 10, 9, 5, 5, 15, 13
 POPS
+
+; out: a = 1 iff (wCandX, wCandY) duplicates an already-placed isle
+; (wIsles[0..wChX-1]). clobbers a, b, d, h, l
+IsDupCell:
+    ld hl, wIsles
+    ld a, [wChX]                   ; isles placed so far
+    and a
+    ret z                          ; first isle: never a duplicate
+    ld d, a
+.loop
+    ld a, [wCandX]
+    cp [hl]
+    jr nz, .no
+    inc hl
+    ld a, [wCandY]
+    cp [hl]
+    jr nz, .no2
+    ld a, 1
+    ret
+.no2
+    dec hl
+.no
+    inc hl
+    inc hl
+    dec d
+    jr nz, .loop
+    xor a
+    ret
+
+; Last resort when all six attempts are landless or duplicates: scan the
+; 16x16 cell grid from (wCandX+1, wCandY) for a cell that has land AND is
+; distinct; failing that, settle for the first distinct cell seen (a world
+; that starved of land is pathological, and the sweep flags it).
+; clobbers a, b, c, d, e, h, l
+FallbackFind:
+    xor a
+    ld [wBestK], a                 ; iteration counter (attempts are done)
+    ld a, $FF
+    ld [wFFStash], a               ; $FF = nothing stashed yet
+.loop
+    ld a, [wCandX]
+    inc a
+    and 15
+    ld [wCandX], a
+    jr nz, .noWrap
+    ld a, [wCandY]
+    inc a
+    and 15
+    ld [wCandY], a
+.noWrap
+    call IsDupCell
+    and a
+    jr nz, .next
+    ld a, [wFFStash]               ; distinct: stash the first one seen
+    cp $FF
+    jr nz, .have
+    ld a, [wCandX]
+    ld [wFFStash], a
+    ld a, [wCandY]
+    ld [wFFStash+1], a
+.have
+    call CellHasLand               ; (clobbers b/c/d/e/wJCount — the
+    and a                          ;  counter and stash are WRAM, safe)
+    ret nz                         ; land && distinct: accept
+.next
+    ld a, [wBestK]
+    inc a
+    ld [wBestK], a
+    jr nz, .loop                   ; 255 more cells, then stop
+    ld a, [wFFStash]               ; nothing with land: take the stash
+    cp $FF
+    ret z                          ; no distinct cell at all (impossible:
+                                   ; 9 isles in 256 cells) — keep the last
+    ld [wCandX], a
+    ld a, [wFFStash+1]
+    ld [wCandY], a
+    ret
 
 ; in: wCandX, wCandY (cell coords); out: a = 1 iff any sampled land tile
 CellHasLand:

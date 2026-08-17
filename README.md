@@ -102,9 +102,12 @@ and assert on VRAM, WRAM symbols, and hardware registers:
 
 ```sh
 pip install pyboy
-for t in tests/test_*.py; do python "$t"; done
-python tests/lint_worlds.py    # seed sweep: spawns, isle land, port census
+make check    # builds the ROM, runs every test_*.py, then lint_worlds.py
 ```
+
+(or run them by hand: `for t in tests/test_*.py; do python "$t"; done`,
+then `python tests/lint_worlds.py` — a seed sweep of spawns, isle land,
+and the port census.)
 
 - `test_title.py` / `test_cgb.py` — title screen, CGB palette init, DMG/CGB parity
 - `test_m2.py` … `test_m5.py` — worldgen/streaming, ports & economy, combat, the Nine Isles

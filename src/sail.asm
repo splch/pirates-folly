@@ -10,6 +10,9 @@ INCLUDE "defs.inc"
 INCLUDE "text.inc"
 
 SECTION "Sail WRAM", WRAM0
+wJobAxis:   db              ; generation job: 0 = idle, 1 = column, 2 = row
+wJobCoord:  dw              ; world tile column/row of the active job
+wJobHalf:   db              ; 0 = first half next, 1 = second half next
 wPosX::     dw              ; 12.4 fixed-point ship position
 wPosY::     dw
 wOldPosX:   dw
@@ -103,6 +106,12 @@ SailRedraw::
 SailRedrawBody:
     call ComputeTiles
     call SailFillScreen
+    ; the full refill makes any queued/in-flight stream work stale
+    ld a, $FF
+    ld [wCrossCol+1], a
+    ld [wCrossRow+1], a
+    xor a
+    ld [wJobAxis], a
     call SetupHud
     call SailSprite
     ld a, [wCamX]
@@ -820,9 +829,18 @@ SailCamera:
     ret
 
 ; Detect tile-boundary crossings and stage the entering row/column.
-; (Generation here, in the logic phase; SailVBlank blits.)
+; Generation here, in the logic phase; SailVBlank blits.
+;
+; FRAME BUDGET: a full stage is ~20 WorldTile evaluations, and a diagonal
+; crossing enters a column AND a row at once — both plus combat overran
+; the frame (R49: the main loop lost VBlanks at fast diagonal scroll). So
+; generation is sliced: at most ONE HALF-STAGE per frame, pulled from a
+; one-job queue. Crossings queue in wCrossCol/wCrossRow (set only if the
+; slot is empty: at extreme speeds — sails + storm — crossings can outrun
+; the budget, and losing the NEWEST crossing keeps the map lagging
+; gracefully instead of dropping the about-to-be-visible edge).
 CheckStream:
-    ; --- X axis ---
+    ; --- X axis: record the crossing, don't generate yet ---
     ld a, [wCamX]
     ld l, a
     ld a, [wCamX+1]
@@ -857,18 +875,20 @@ CheckStream:
     ld a, [wTileX+1]
     adc 0
     ld d, a
-    call GenColStage
-    jr .markCol
+    jr .colGot
 .left
     ld a, [wTileX]
     ld e, a
     ld a, [wTileX+1]
     ld d, a
-    call GenColStage
-.markCol
-    ldh a, [hStagePend]
-    or 1
-    ldh [hStagePend], a
+.colGot
+    ld a, [wCrossCol+1]
+    cp $FF
+    jr nz, .xDone                 ; slot busy: drop the newest crossing
+    ld a, e
+    ld [wCrossCol], a
+    ld a, d
+    ld [wCrossCol+1], a
 .xDone
     ; --- Y axis ---
     ld a, [wCamY]
@@ -885,7 +905,7 @@ CheckStream:
     jr nz, .yDiff
     ld a, h
     cp b
-    ret z
+    jr z, .yDone
 .yDiff
     ld a, l
     ld [wTileY], a
@@ -905,18 +925,115 @@ CheckStream:
     ld a, [wTileY+1]
     adc 0
     ld d, a
-    call GenRowStage
-    jr .markRow
+    jr .rowGot
 .up
     ld a, [wTileY]
     ld e, a
     ld a, [wTileY+1]
     ld d, a
-    call GenRowStage
-.markRow
+.rowGot
+    ld a, [wCrossRow+1]
+    cp $FF
+    jr nz, .yDone                 ; slot busy: drop the newest (see .colGot)
+    ld a, e
+    ld [wCrossRow], a
+    ld a, d
+    ld [wCrossRow+1], a
+.yDone
+    ; --- generation: one half-stage per frame, from the job queue ---
+    ld a, [wJobAxis]
+    and a
+    jr nz, .runJob
+    ; idle: start a job from the queue (column first)
+    ld a, [wCrossCol+1]
+    cp $FF
+    jr z, .tryRowJob
+    ld a, 1
+    ld [wJobAxis], a
+    ld a, [wCrossCol]
+    ld [wJobCoord], a
+    ld a, [wCrossCol+1]
+    ld [wJobCoord+1], a
+    ld a, $FF
+    ld [wCrossCol+1], a
+    xor a
+    ld [wJobHalf], a
+    jr .runJob
+.tryRowJob
+    ld a, [wCrossRow+1]
+    cp $FF
+    ret z
+    ld a, 2
+    ld [wJobAxis], a
+    ld a, [wCrossRow]
+    ld [wJobCoord], a
+    ld a, [wCrossRow+1]
+    ld [wJobCoord+1], a
+    ld a, $FF
+    ld [wCrossRow+1], a
+    xor a
+    ld [wJobHalf], a
+.runJob
+    ld a, [wJobAxis]
+    cp 1
+    jr z, .jobCol
+    ; --- row job ---
+    ld a, [wJobHalf]
+    and a
+    jr nz, .rowSecond
+    ld a, [wJobCoord]
+    ld e, a
+    ld a, [wJobCoord+1]
+    ld d, a
+    call GenRowPrefill
+    xor a
+    ld [wGenK0], a
+    ld a, 11
+    ld [wGenK1], a
+    call GenRowTiles
+    ld a, 1
+    ld [wJobHalf], a
+    ret
+.rowSecond
+    ld a, 11
+    ld [wGenK0], a
+    ld a, 21
+    ld [wGenK1], a
+    call GenRowTiles
     ldh a, [hStagePend]
     or 2
     ldh [hStagePend], a
+    xor a
+    ld [wJobAxis], a
+    ret
+.jobCol
+    ld a, [wJobHalf]
+    and a
+    jr nz, .colSecond
+    ld a, [wJobCoord]
+    ld e, a
+    ld a, [wJobCoord+1]
+    ld d, a
+    call GenColPrefill
+    xor a
+    ld [wGenK0], a
+    ld a, 10
+    ld [wGenK1], a
+    call GenColTiles
+    ld a, 1
+    ld [wJobHalf], a
+    ret
+.colSecond
+    ld a, 10
+    ld [wGenK0], a
+    ld a, 19
+    ld [wGenK1], a
+    call GenColTiles
+    ldh a, [hStagePend]
+    or 1
+    ldh [hStagePend], a
+    xor a
+    ld [wJobAxis], a
     ret
 
 ; Ship sprite into shadow OAM (entry 0).

@@ -24,12 +24,10 @@ jobs:
         run: make RGBDS="$RGBDS_DIR"
 
       - name: Run test suite
-        run: |
-          for t in tests/test_*.py; do
-            echo "== $t"
-            python "$t"
-          done
-          python tests/lint_worlds.py
+        run: make check
+
+      - name: Combat balance harness
+        run: python tests/tune_balance.py
 
       - name: Upload ROM artifact
         uses: actions/upload-artifact@v4
@@ -49,3 +47,22 @@ jobs:
             Download `pirates_folly.gb` and open it in any Game Boy emulator.
           files: pirates_folly.gb
           prerelease: true
+
+  # Build against the latest RGBDS release to catch toolchain drift early.
+  # Advisory only: never blocks the pinned build.
+  build-latest-rgbds:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install latest RGBDS
+        run: |
+          mkdir -p rgbds-bin
+          curl -sL https://github.com/gbdev/rgbds/releases/latest/download/rgbds-linux-x86_64.tar.xz | tar -xJ -C rgbds-bin
+
+      - name: Install Python deps
+        run: python3 -m pip install numpy
+
+      - name: Build ROM with latest RGBDS
+        run: make clean && make RGBDS="$PWD/rgbds-bin/"
