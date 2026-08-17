@@ -35,6 +35,14 @@ LoadTiles::
     ld de, $8000 + 15 * 16
     ld bc, 16
     call CopyVRAM
+    ld hl, ShoreTiles
+    ld de, $8000 + 96 * 16
+    ld bc, 6 * 16
+    call CopyVRAM
+    ld hl, ShoreSprites
+    ld de, $8000 + 104 * 16
+    ld bc, 5 * 16
+    call CopyVRAM
     ld hl, SkullTile
     ld de, $8000 + 68 * 16
     ld bc, 16
@@ -192,7 +200,8 @@ POPS
 
 ; 2-frame water animation: [deepA][shallowA][deepB][shallowB], 16 bytes each.
 ; SailVBlank copies one 32-byte pair over tiles 1-2 every 16 frames.
-PUSHS "Water anim data", ROMX, BANK[3]
+; ROM0: AnimWater (also ROM0) reads it for both sailing and shore mode.
+PUSHS "Water anim data", ROM0
 WaterFrames::
     dw `00000000
     dw `00000000
@@ -838,6 +847,112 @@ HexFont:
     dw `30000000
     dw `00000000
     dw `00000000
+    dw `00000000
+
+; Shore mode art lives in ROM0: LoadTiles reads it with any bank mapped.
+SECTION "Shore tile data", ROM0
+ShoreTiles:
+; 96 TILE_SH_GRASS — fine meadow speckle
+    dw `22222222
+    dw `22232222
+    dw `22222222
+    dw `22222232
+    dw `22322222
+    dw `22222222
+    dw `22232222
+    dw `22222222
+; 97 TILE_SH_GRASS2 — grassy tufts
+    dw `22222222
+    dw `22322322
+    dw `22222222
+    dw `22232232
+    dw `22222222
+    dw `22322232
+    dw `22222222
+    dw `22232222
+; 98 TILE_SH_TREE — canopy + trunk (blocks movement)
+    dw `00233200
+    dw `02333320
+    dw `23333332
+    dw `23333332
+    dw `02333320
+    dw `00233200
+    dw `00033000
+    dw `00033000
+; 99 TILE_SH_ROCK — boulder (blocks movement)
+    dw `00000000
+    dw `00233200
+    dw `02322320
+    dw `23222232
+    dw `32222223
+    dw `32222223
+    dw `03222230
+    dw `00333300
+; 100 TILE_SH_FLOWER — meadow flowers (walkable)
+    dw `22222222
+    dw `22212222
+    dw `22121222
+    dw `22212222
+    dw `22222222
+    dw `22222212
+    dw `22221212
+    dw `22222222
+; 101 TILE_SH_MTN — craggy peak (blocks movement)
+    dw `00000000
+    dw `00033000
+    dw `00322300
+    dw `03211230
+    dw `32122123
+    dw `32222223
+    dw `33333333
+    dw `00000000
+
+SECTION "Shore sprite data", ROM0
+ShoreSprites:
+; 104 player N (walking pirate, back view)
+    dw `00000000
+    dw `00033000
+    dw `00333300
+    dw `00011000
+    dw `00222200
+    dw `00222200
+    dw `00022000
+    dw `00200200
+; 105 player E
+    dw `00000000
+    dw `00033000
+    dw `00333300
+    dw `00011300
+    dw `00222100
+    dw `00222200
+    dw `00022000
+    dw `00200200
+; 106 player S
+    dw `00000000
+    dw `00033000
+    dw `00333300
+    dw `00122100
+    dw `00222200
+    dw `00222200
+    dw `00022000
+    dw `00200200
+; 107 player W
+    dw `00000000
+    dw `00033000
+    dw `00333300
+    dw `00311000
+    dw `00122000
+    dw `00222000
+    dw `00022000
+    dw `00200200
+; 108 TILE_DINGHY — rowboat, top-down
+    dw `00000000
+    dw `00000000
+    dw `00333300
+    dw `03222230
+    dw `03211230
+    dw `03222230
+    dw `00333300
     dw `00000000
 
 SECTION "Ball tile", ROMX, BANK[3]

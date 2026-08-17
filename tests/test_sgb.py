@@ -18,7 +18,7 @@ for line in open(SYM):
 rom = open(ROM, "rb").read()
 assert rom[0x146] == 0x03, f"SGB flag {rom[0x146]:#x}"
 assert rom[0x14B] == 0x33, f"old licensee {rom[0x14B]:#x}"
-assert rom[0x148] == 0x01 and len(rom) == 65536, "must be a 64 KiB ROM now"
+assert rom[0x148] == 0x02 and len(rom) == 131072, "must be a 128 KiB ROM now"
 
 # --- DMG: detection says no-SGB, boot/sail unaffected ---
 import os, shutil, tempfile, pyboy as _pb

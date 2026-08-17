@@ -36,6 +36,7 @@ DEF STATE_DIG  EQU 5        ; treasure dig scene
 DEF STATE_WIN  EQU 6        ; victory screen
 DEF STATE_TITLE EQU 7       ; title screen (M6)
 DEF STATE_MERCH EQU 8       ; merchant hail: trade or plunder
+DEF STATE_SHORE EQU 9       ; exploring land on foot (2x zoom)
 
 ; --- Joypad combined-byte masks (bit set = pressed) ---
 ; bit 7..0 = Down Up Left Right Start Select B A
@@ -87,6 +88,22 @@ DEF TILE_SLASH    EQU 66      ; '/'
 DEF TILE_BALL     EQU 12      ; cannonball
 DEF TILE_SPLASH   EQU 15      ; water splash / powder smoke burst
 DEF TILE_SKULL    EQU 68      ; chart: isle with a living guardian
+
+; --- Shore mode tiles (land at 2x zoom) ---
+DEF TILE_SH_GRASS  EQU 96
+DEF TILE_SH_GRASS2 EQU 97
+DEF TILE_SH_TREE   EQU 98
+DEF TILE_SH_ROCK   EQU 99
+DEF TILE_SH_FLOWER EQU 100
+DEF TILE_SH_MTN    EQU 101
+DEF TILE_SH_PLAYER EQU 104      ; 104-107: N/E/S/W
+DEF TILE_DINGHY    EQU 108
+
+; --- Shore mode geometry (2x the ocean, same lattice) ---
+DEF SHORE_W       EQU 640       ; tiles (2x WORLD_W)
+DEF SHORE_H       EQU 576       ; tiles (2x WORLD_H)
+DEF SH_CAM_MAX_X  EQU 4960      ; camera clamp: keeps tileX+20 <= 640
+DEF SH_CAM_MAX_Y  EQU 4464      ; camera clamp: keeps tileY+18 <= 576
 
 ; --- Ports & economy (M3) ---
 DEF PMAIN    EQU 0

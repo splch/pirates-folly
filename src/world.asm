@@ -11,13 +11,15 @@ SECTION "Stage HRAM", HRAM
 hStagePend::    db          ; bit 0: column pending, bit 1: row pending
 
 SECTION "World WRAM", WRAM0
-wStageRowTiles: ds 21
-wStageColTiles: ds 19
-wStageRowAttrs: ds 21       ; CGB palette per staged tile
-wStageColAttrs: ds 19
-wStageCol:      dw          ; world tile column of staged column
-wStageRow:      db          ; world tile row of staged row
-wStageColY:     db          ; wTileY (low byte) when the column was staged:
+; Shared with shore mode (shore.asm stages into the same buffers and
+; blits through the same ROM0 routines): many of these are exported.
+wStageRowTiles:: ds 21
+wStageColTiles:: ds 19
+wStageRowAttrs:: ds 21      ; CGB palette per staged tile
+wStageColAttrs:: ds 19
+wStageCol::     dw          ; world tile column of staged column
+wStageRow::     db          ; world tile row of staged row
+wStageColY::    db          ; wTileY (low byte) when the column was staged:
                             ; the blit runs at least a frame later (two when
                             ; generation is sliced) — the live wTileY may
                             ; have advanced again by then
@@ -29,35 +31,35 @@ wStageBaseX::   dw          ; wTileX at row-stage prefill time: sliced halves
 wStageBaseY::   dw          ; wTileY at col-stage prefill time — the camera
                             ; may advance between halves, so tiles must NOT
                             ; read the live camera position
-wStageLatX:     db          ; lattice ix0/iy0 at prefill time (wIX0/wIY0 are
-wStageLatY:     db          ;   clobbered by WorldTile between halves)
-wStageRowH:     db          ; staged row's high byte (wGRrowH is clobbered
+wStageLatX::    db          ; lattice ix0/iy0 at prefill time (wIX0/wIY0 are
+wStageLatY::    db          ;   clobbered by WorldTile between halves)
+wStageRowH::    db          ; staged row's high byte (wGRrowH is clobbered
                             ;   by WorldTile between halves too)
-wSpX:           dw          ; FindSpawn candidate tile x
+wSpX::          dw          ; FindSpawn candidate tile x
 wSpY:           db          ; FindSpawn candidate row
 wSpYC:          db          ; FindSpawn vertical-run cursor
-wSpN:           db          ; FindSpawn run counter
-wSpX2:          dw          ; FindSpawn eastward-run cursor
+wSpN::          db          ; FindSpawn run counter
+wSpX2::         dw          ; FindSpawn eastward-run cursor
 wSpRowPtr:      dw          ; FindSpawn row-table cursor
-wLatTop:        ds 5        ; lattice row/column cache
-wLatBot:        ds 5
-wIX0:           db
-wIY0:           db
-wIY1:           db
+wLatTop::       ds 5        ; lattice row/column cache
+wLatBot::       ds 5
+wIX0::          db
+wIY0::          db
+wIY1::          db
 wJ::            db
 wJCount::       db
-wK:             db
-wFX:            db
-wFY:            db
+wK::            db
+wFX::           db
+wFY::           db
 wWX::           dw          ; current tile x (generation/detail)
 wGRrow::        db          ; current tile y (low byte; detail hash)
 wGRrowH::       db          ; current tile y, high byte (world rows 256-287)
-wH00:           db
-wH10:           db
-wH01:           db
-wH11:           db
-wE1:            db
-wE2:            db
+wH00::          db
+wH10::          db
+wH01::          db
+wH11::          db
+wE1::           db
+wE2::           db
 wShipCX::       db          ; ship cell coords (0..15)
 wShipCY::       db
 wChX::          db
@@ -99,7 +101,9 @@ POPS
 
 ; Lattice hash. in: d = ix (0..40), e = iy (0..36); out: a = hash byte.
 ; clobbers: a, b, c, d, e, h, l
-LatHash:
+; ROM0: shore mode (bank 4) hashes the same lattice.
+PUSHS "Lattice hash", ROM0
+LatHash::
     ld a, d
     ld hl, MUL97_TAB
     call IdxWord                   ; hl = ix*97
@@ -118,6 +122,7 @@ LatHash:
     call Mix16
     ld a, l
     ret
+POPS
 
 PUSHS "MulMag table", ROM0, ALIGN[8]
 ; (mag * frac) >> 3 for all 256x8 inputs: page-aligned so the lookup is
@@ -133,7 +138,9 @@ POPS
 
 ; in: a = magnitude (0..255), c = frac (0..7); out: a = (mag * frac) >> 3
 ; clobbers: a, h, l
-MulMag:
+; ROM0: shore mode's MulMag16 builds on it (shore.asm).
+PUSHS "MulMag", ROM0
+MulMag::
     ld l, a
     ld h, HIGH(MULMAG_TAB)
     ld a, c
@@ -141,6 +148,7 @@ MulMag:
     ld h, a
     ld a, [hl]
     ret
+POPS
 
 ; Unsigned lerp: in: b = base, a = other, c = frac (0..7)
 ; out: a = base + (other - base) * frac / 8  (stays within [base, other])
@@ -726,7 +734,10 @@ GenColStage::
 
 ; ---------------------------------------------------------------------------
 ; VBlank blits of staged tiles (fast: <= 21 VRAM writes)
+; ROM0: shore mode (bank 4) blits through the same routines.
 ; ---------------------------------------------------------------------------
+
+PUSHS "Staged blits", ROM0
 
 ; in: a = tilemap row (0..31); out: hl = $9800 + a*32; clobbers a, b, c
 MapRowAddr::
@@ -907,6 +918,7 @@ BlitColStage::
     call BlitColPass
     VBK0
     ret
+POPS
 
 ; ---------------------------------------------------------------------------
 ; Spawn: find deep water near the map middle

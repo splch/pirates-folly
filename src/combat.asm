@@ -1777,7 +1777,9 @@ HasLOS:
     ret
 
 ; hl = |hl| (16-bit absolute value)
-AbsHL:
+; ROM0: shore mode's reboard check uses it too.
+PUSHS "AbsHL", ROM0
+AbsHL::
     bit 7, h
     ret z
     ld a, l
@@ -1788,3 +1790,4 @@ AbsHL:
     ld h, a
     inc hl
     ret
+POPS

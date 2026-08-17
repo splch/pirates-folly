@@ -31,6 +31,7 @@ wCartDone:: db          ; chart-completion bounty awarded this voyage
 wHullMax:: db           ; shipyard upgrades: plating 20/25/30
 wMaxVel::  db           ; swift sails: 40 -> 48
 wBallLife:: db          ; long guns: 40 -> 56 frames of range
+wHasDinghy:: db         ; shipyard dinghy: 1 = owned (go ashore from any beach)
 wNpR:       db          ; nearest-port scan state
 wNpX:       db
 wNpY:       db
@@ -1093,24 +1094,34 @@ RecruitAction:
     ret
 
 ; ---------------------------------------------------------------------------
-; Shipyard: three upgrades, one screen. PLATING (+5 hull, two tiers),
-; SAILS (40 -> 48 velocity cap), LONG GUNS (40 -> 56 ball range).
+; Shipyard: four upgrades, one screen. PLATING (+5 hull, two tiers),
+; SAILS (40 -> 48 velocity cap), LONG GUNS (40 -> 56 ball range),
+; DINGHY (go ashore from any beach).
 ; ---------------------------------------------------------------------------
 
 PUSHS "Shipyard tables", ROMX, BANK[3]
-UPG_NAMES: dw StrPlating, StrSails, StrGuns
+UPG_NAMES: dw StrPlating, StrSails, StrGuns, StrDinghy
 UPG_COSTS: db 100, 250, 0            ; plating: two tiers, then maxed
            db 200, 0, 0              ; sails
            db 200, 0, 0              ; long guns
+           db 150, 0, 0              ; dinghy
 POPS
 
-; in: a = upgrade index 0..2; out: a = cost (0 = maxed). clobbers b, c, d, e, h, l
+; in: a = upgrade index 0..3; out: a = cost (0 = maxed). clobbers b, c, d, e, h, l
 UpgCost:
     ld b, a                          ; index
     and a
     jr z, .plating
     dec a
     jr z, .sails
+    dec a
+    jr z, .guns
+    ld a, [wHasDinghy]               ; dinghy
+    and a
+    jr nz, .lvl1
+    xor a
+    jr .lookup
+.guns
     ld a, [wBallLife]
     cp 56
     jr z, .lvl1
@@ -1190,7 +1201,7 @@ RenderShipyard:
     ld a, [wPortK]
     inc a
     ld [wPortK], a
-    cp 3
+    cp 4
     jr nz, .row
     ld hl, StrUpgHelp
     ld de, $9800 + 11 * 32 + 2
@@ -1211,6 +1222,12 @@ ShipyardBuy:
     jr z, .plate
     dec a
     jr z, .sails
+    dec a
+    jr z, .guns
+    ld a, 1
+    ld [wHasDinghy], a               ; dinghy
+    jr .done
+.guns
     ld a, 56
     ld [wBallLife], a                ; long guns
     jr .done
@@ -1253,7 +1270,7 @@ ShipyardInput:
     jr z, .notDown
     ld a, [wPortMenu]
     inc a
-    cp 3
+    cp 4
     jr c, .ok
     xor a
 .ok
@@ -1268,6 +1285,7 @@ ShipyardInput:
     ld a, 1
     ld [wPortDirty], a
     ret
+
 
 ; ---------------------------------------------------------------------------
 ; Merchant encounter (STATE_MERCH): trade or plunder. The scene renders and
@@ -1479,7 +1497,9 @@ PrintStr::
 
 ; a = value -> 2 decimal digits at de (leading zero). Values above 99
 ; are clamped: a 3-digit quotient would index past '9' in the font.
+; ROM0 (with DivA/DivHL): shore mode's HUD prints the same readings.
 ; clobbers a, b, c, de
+PUSHS "Decimal printing", ROM0
 PrintDec2::
     cp 100
     jr c, .ok
@@ -1559,7 +1579,7 @@ DivA:
     ret
 
 ; hl / bc -> a (quotient < 256), hl = remainder. clobbers a, bc, hl
-DivHL:
+DivHL::
     xor a
 .loop
     push af
@@ -1583,6 +1603,7 @@ DivHL:
     ld h, a
     pop af
     ret
+POPS
 
 ; ---------------------------------------------------------------------------
 ; Port name generation
@@ -1634,6 +1655,7 @@ StrShipyard: db "SHIPYARD", 0
 StrPlating: db "PLATING", 0
 StrSails:   db "SAILS", 0
 StrGuns:    db "LONG GUNS", 0
+StrDinghy:  db "DINGHY", 0
 StrMaxed:   db "MAXED", 0
 StrUpgHelp: db "A BUY  B BACK", 0
 StrSaved:   db "GAME SAVED", 0

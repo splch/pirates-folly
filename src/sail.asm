@@ -10,9 +10,9 @@ INCLUDE "defs.inc"
 INCLUDE "text.inc"
 
 SECTION "Sail WRAM", WRAM0
-wJobAxis:   db              ; generation job: 0 = idle, 1 = column, 2 = row
-wJobCoord:  dw              ; world tile column/row of the active job
-wJobHalf:   db              ; 0 = first half next, 1 = second half next
+wJobAxis::  db              ; generation job: 0 = idle, 1 = column, 2 = row
+wJobCoord:: dw              ; world tile column/row of the active job
+wJobHalf::  db              ; 0 = first half next, 1 = second half next
 wPosX::     dw              ; 12.4 fixed-point ship position
 wPosY::     dw
 wOldPosX:   dw
@@ -27,9 +27,9 @@ wTileX::    dw              ; leftmost visible world tile (0..299)
 wTileY::    dw
 wHeading::  db              ; 0=N 1=E 2=S 3=W
 wAnimPhase: db
-wHudDigits: ds 8            ; TX (3), TY (3), SPD (2)
+wHudDigits:: ds 8           ; TX (3), TY (3), SPD (2)
 wQuitCfm::  db              ; B-quit confirm window (frames left)
-wHudRow1:   ds 15           ; window row 1: stats line / quit message
+wHudRow1::  ds 15           ; window row 1: stats line / quit message
 wShakeT::   db              ; screen-shake frames (set on hull damage)
 wHitFlashT:: db             ; BGP damage-flash frames
 
@@ -177,7 +177,9 @@ SailFillScreen:
     ret
 
 ; Window map init: clear 2 rows, write static labels, set WX/WY (LCD off).
-SetupHud:
+; ROM0: shore mode (bank 4) uses the same window HUD.
+PUSHS "HUD setup", ROM0
+SetupHud::
     ld hl, $9C00
     ld b, 64
     xor a
@@ -198,6 +200,7 @@ SetupHud:
     ld a, 128
     ldh [rWY], a
     ret
+POPS
 
 ; ---------------------------------------------------------------------------
 ; Per-frame VBlank work (called first thing after halt; we are in Mode 1)
@@ -267,7 +270,9 @@ SailVBlank::
     ret
 
 ; Swap the two water tiles' graphics every 16 frames.
-AnimWater:
+; ROM0: shore mode shows the same animated sea.
+PUSHS "Water animation", ROM0
+AnimWater::
     ldh a, [hFrameCounter]
     and $0F
     ret nz
@@ -284,9 +289,12 @@ AnimWater:
     ld bc, 32
     call CopyVRAM
     ret
+POPS
 
 ; Write the 8 HUD digit tiles into the window map.
-HudVBlank:
+; ROM0: shore mode's VBlank writes the same HUD buffers.
+PUSHS "HUD VBlank", ROM0
+HudVBlank::
     ld hl, wHudDigits
     ld a, [hli]
     ld [$9C01], a
@@ -315,6 +323,7 @@ HudVBlank:
     dec b
     jr nz, .row1
     ret
+POPS
 
 ; ---------------------------------------------------------------------------
 ; Game logic (runs after VBlank work; no VRAM access here)
@@ -442,6 +451,11 @@ UpdateSail::
     ld a, [wState]
     cp STATE_SAIL
     ret nz                         ; docked or dug: no cannons either way
+    ld hl, TryLand
+    call FarCall4                    ; dinghy landing (bank 4)
+    ld a, [wState]
+    cp STATE_SAIL
+    ret nz                         ; went ashore: no cannons either
     call FireCannon
 .noDock
     ; save position for collision revert
@@ -1144,7 +1158,9 @@ AbsA::
     ret
 
 ; in: hl = value (12 bits shown), de = dest (3 bytes, advanced)
-WriteHexTriple:
+; ROM0: shore mode's HUD prints the same formats.
+PUSHS "Hex printing", ROM0
+WriteHexTriple::
     ld a, h
     and $0F
     add TILE_HEX0
@@ -1164,7 +1180,7 @@ WriteHexTriple:
     ret
 
 ; in: a = value, de = dest (2 bytes, advanced)
-WriteHexPair:
+WriteHexPair::
     ld b, a
     swap a
     and $0F
@@ -1177,6 +1193,7 @@ WriteHexPair:
     ld [de], a
     inc de
     ret
+POPS
 
 SECTION "Sail strings", ROMX, BANK[3]
 StrWreck:   db "SHIPWRECK!", 0

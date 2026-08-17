@@ -40,6 +40,8 @@ wRngState::    dw
 wIsCGB::       db             ; $11 = CGB/AGB (boot ROM leaves it in a)
 wIsSGB::       db             ; $14 = SGB/SGB2 (boot ROM leaves it in c)
 wIsAGB::       db             ; 1 = AGB (boot ROM leaves b bit 0 set; CGB only)
+wFarA:         db             ; FarCall3/4: arg-a stash across the bank switch
+wFarHL:        dw             ; FarCall3/4: target stash (args ride in registers)
 
 SECTION "Volatile WRAM", WRAM0
 ; Per-voyage encounter state, cleared with ONE span loop at boot and in
@@ -260,6 +262,8 @@ MainLoop:
     jr z, .dig
     cp STATE_MERCH
     jr z, .merch
+    cp STATE_SHORE
+    jr z, .shore
     cp STATE_WIN
     jr z, .win
     call ReadJoypad
@@ -287,10 +291,19 @@ MainLoop:
     call ReadJoypad
     call UpdateMerch
     jr MainLoop
+.shore
+    ld a, BANK(ShoreVBlank)        ; shore mode lives in bank 4; the bank-3
+    ld [$2000], a                  ; invariant is restored before returning
+    call ShoreVBlank               ; time-critical: runs inside VBlank
+    call ReadJoypad
+    call UpdateShore
+    ld a, 3
+    ld [$2000], a
+    jp MainLoop                  ; .shore grew the loop past jr range
 .win
     call ReadJoypad
     call UpdateWin
-    jr MainLoop
+    jp MainLoop                  ; .shore grew the loop past jr range
 .title
     call ReadJoypad
     call UpdateTitle
@@ -302,6 +315,61 @@ VBlankHandler:
     ldh [hVBlankFlag], a
     pop af
     reti
+
+; ---------------------------------------------------------------------------
+; Far-call trampolines (ROM0): shore mode lives in bank 4, everything else
+; in bank 3. The bank-3 invariant (mapped everywhere except inside the SGB
+; transfer) keeps plain calls working within bank 3; cross-bank calls go
+; through these. in: hl = target. Args in b/c/d/e/hl pass through untouched;
+; an arg in a is stashed in wFarA across the bank switch.
+; ---------------------------------------------------------------------------
+; The target goes through WRAM (wFarHL) and the return address is pushed
+; while hl is still free: no argument register (a/bc/de) is touched.
+FarCall3::                         ; bank-4 caller -> bank-3 target
+    ld [wFarA], a
+    ld a, l
+    ld [wFarHL], a
+    ld a, h
+    ld [wFarHL+1], a
+    ld a, 3
+    ld [$2000], a
+    ld hl, .back
+    push hl
+    ld a, [wFarHL]
+    ld l, a
+    ld a, [wFarHL+1]
+    ld h, a
+    ld a, [wFarA]
+    jp hl
+.back
+    push af
+    ld a, 4
+    ld [$2000], a
+    pop af
+    ret
+
+FarCall4::                         ; bank-3 caller -> bank-4 target
+    ld [wFarA], a
+    ld a, l
+    ld [wFarHL], a
+    ld a, h
+    ld [wFarHL+1], a
+    ld a, 4
+    ld [$2000], a
+    ld hl, .back
+    push hl
+    ld a, [wFarHL]
+    ld l, a
+    ld a, [wFarHL+1]
+    ld h, a
+    ld a, [wFarA]
+    jp hl
+.back
+    push af
+    ld a, 3
+    ld [$2000], a
+    pop af
+    ret
 
 ; ---------------------------------------------------------------------------
 ; Seed editor state
@@ -630,6 +698,7 @@ InitNewGame:
     ld [wFinal], a
     ld [wWon], a
     ld [wIsGuardian], a
+    ld [wHasDinghy], a
     ld [wCartDone], a            ; bounty is per-voyage (wBestGold persists)
     ld [wFragCount], a
     ; a storm/enemy/merchant from a B-quit voyage must not follow the

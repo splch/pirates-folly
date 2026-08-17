@@ -31,7 +31,7 @@ then flash it to a cartridge or open it in any Game Boy emulator
 | Button | At sea | In port | Elsewhere |
 |---|---|---|---|
 | D-pad | Sail (momentum — ease off!) | Menus | Edit seed digits |
-| A | Dock at a beach / fire cannons / **dig** on an isle | Confirm / buy (RIGHT) | New game (seed screen) |
+| A | Dock at a beach / fire cannons / **dig** on an isle / **go ashore** (with the dinghy) | Confirm / buy (RIGHT) | New game (seed screen) / reboard (ashore) |
 | B | Quit to seed screen (press twice; unsaved) | Back / set sail | — |
 | SELECT | Mute sound | Mute sound | Re-roll the seed (seed screen) |
 | START | **The chart** (your map fills in as you explore) | — | Continue a saved game |
@@ -48,7 +48,12 @@ then flash it to a cartridge or open it in any Game Boy emulator
   Trade four goods (rum, silk, spice, cannon), repair the hull, recruit crew,
   and ask the tavern for rumors — it knows the nearest port and the nearest
   unclaimed Isle of Legend. The **shipyard** refits your ship for gold:
-  plating (+5 hull, twice), sails (+50% top speed), long guns (+40% reach).
+  plating (+5 hull, twice), sails (+50% top speed), long guns (+40% reach),
+  and a **dinghy** for going ashore.
+- **Go ashore.** With the dinghy aboard, press **A** beside any beach to land
+  and explore the island on foot — the *same* world at twice the zoom, so
+  every coastline is exactly where the chart says. Walk back to the dinghy
+  and press **A** to reboard.
 - **Win, and keep sailing.** The Treasure's curse: after victory, charted
   waters roll encounters at full rate — a won sea never calms.
 - **Digging.** An isle's beach only gives up its fragment once its guardian
@@ -81,7 +86,7 @@ make                       # uses tools/rgbds/bin/ by default
 make RGBDS=/path/to/bin/   # use your own RGBDS install
 ```
 
-Output: `pirates_folly.gb` (64 KiB, MBC5+RAM+BATTERY) plus `build/` artifacts
+Output: `pirates_folly.gb` (128 KiB, MBC5+RAM+BATTERY) plus `build/` artifacts
 (symbol and map files used by the test suite).
 
 ### Web build
@@ -131,6 +136,7 @@ src/            RGBDS assembly (the whole game is hand-written SM83)
   world.asm     procedural ocean: value noise, streaming blits, fog of war, chart
   sail.asm      sailing physics, smooth scrolling, tile streaming, HUD, wreck
   combat.asm    pirates, guardians, broadsides, storms
+  shore.asm     shore mode: exploring land on foot at 2x zoom (bank 4)
   isles.asm     the Nine Isles, digs, final battle, victory
   port.asm      docking, market, tavern, repair/recruit, battery save/load
   sound.asm     3-channel shanty driver + SFX (no hUGEDriver)
@@ -154,6 +160,8 @@ MANUAL.md       the player's manual
   bilinear elevation, thresholds for deep/shallow/sand/grass/forest/mountain.
   Nothing about the world is ever stored; only your *changes* are (fog of
   war, port markers, fragment/guardian bits, position, gold, cargo).
+  Shore mode samples the *same* elevation function with 4-bit interpolation
+  fractions (2x zoom), so landmass silhouettes match the sea chart exactly.
 - **32-bit seed, 16-bit fold.** The seed editor's 8 hex digits fold to
   `wSeed16 = Mix16(b0:b1) + Mix16(b2:b3)` — an additive fold, so
   `00000000`, `FFFFFFFF`, and `AAAAAAAA` don't collapse to the same world.
@@ -169,9 +177,12 @@ MANUAL.md       the player's manual
   strings, tables) live in ROMX bank 3, kept mapped at `$4000` at all
   times except inside the SGB border transfer — which always ends in
   `LoadTiles`, restoring bank 3 before any banked return address is
-  popped. ROM0 keeps only what must run regardless of the mapped bank:
-  boot, main loop, the VBlank handler, joypad/RNG, the tile loader, and
-  the SGB transfer machinery itself (plus the SGB packets, which are read
+  popped. Shore mode lives in ROMX bank 4: it shares ROM0 helpers
+  (blitters, HUD, printing, hashing) and reaches bank 3 through the
+  `FarCall3`/`FarCall4` trampolines in main.asm. ROM0 keeps only what
+  must run regardless of the mapped bank: boot, main loop, the VBlank
+  handler, joypad/RNG, the tile loader, the shared helpers, and the SGB
+  transfer machinery itself (plus the SGB packets, which are read
   mid-transfer while border banks 1/2 are mapped).
 - **SGB borders.** On SGB/SGB2 (detected via the boot ROM's C register),
   the border is beamed over with CHR_TRN/PCT_TRN VRAM transfers while the

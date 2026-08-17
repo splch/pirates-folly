@@ -16,6 +16,7 @@ charts close at hand.
     SAILING THE OPEN SEA .................  7
     THE SEA CHART ........................  8
     HAZARDS OF THE DEEP ..................  9
+    GOING ASHORE .........................  9
     LIFE IN PORT ......................... 10
     THE TAVERN ........................... 11
     THE NINE ISLES OF LEGEND ............. 12
@@ -56,8 +57,9 @@ and carry her way, so ease off before the shore!
 
 **A Button**
 
-*At sea:* Dock at a friendly beach, fire the cannons, or dig for treasure
-on an Isle of Legend.
+*At sea:* Dock at a friendly beach, fire the cannons, dig for treasure
+on an Isle of Legend, or — with the dinghy aboard — land on any beach.
+*Ashore:* Reboard the dinghy.
 *In port:* Confirm a selection.
 *On the title screen:* Begin.
 
@@ -176,6 +178,27 @@ cost hull. When the hull reaches zero, see SHIPWRECK, and say a prayer.
 
 ---
 
+## GOING ASHORE
+
+A ship is a fine thing, Captain, but she cannot follow you up the beach.
+Buy the **DINGHY** at any shipyard, and the world's islands open to you.
+
+* Sail beside any beach without dock planks and press **A** to row ashore.
+  (Planked beaches are ports — you'll dock instead, as always.)
+* Explore on foot with the + Control Pad. The island under your boots is
+  the very landmass your Sea Chart shows, seen up close — every cove and
+  headland exactly where you charted it.
+* Deep water, thick forest, boulders, and crags block your way. A wise
+  captain skirts them; a stubborn one starves.
+* Your instruments still read at the bottom of the screen: TX, TY in hex,
+  and your hull, gold, and fragments, safe aboard the ship.
+* The sea waits for no one, but your ship does: walk back to the dinghy
+  and press **A** to reboard her where you left her.
+* Pirates and storms lose interest while you're ashore. Coward's
+  comfort, some say. Take it.
+
+---
+
 ## MERCHANTS OF THE MAIN
 
 Lone sails on the horizon are not always pirates. **Merchants** drift the
@@ -204,8 +227,8 @@ dock. Every port offers:
 * **RECRUIT** — Hire able seamen, 5 gold a head. The more hands aboard,
   the faster your cannons reload. A well-manned ship fires fast.
 * **SHIPYARD** — Refit your ship. PLATING adds 5 hull (twice), SAILS
-  make her half again as fast, LONG GUNS reach half again as far.
-  Not cheap. Worth it.
+  make her half again as fast, LONG GUNS reach half again as far, and the
+  DINGHY lets you go ashore (see GOING ASHORE). Not cheap. Worth it.
 * **SAVE** — Record the voyage in the Captain's Log.
 * **SET SAIL** — Back to the horizon.
 
@@ -319,6 +342,9 @@ remembering — the seed always knows where they lie.
 * Twenty hands reload your broadside a third faster than five.
 * The sea learns your name. Every fragment you hold makes pirates hit
   harder and shoot faster — chart the easy waters first.
+* With the dinghy aboard, mind the A button near any coast — one press
+  too many and you're watching the battle from the beach. Lead pirates
+  into open water before you trade broadsides.
 
 ---
 

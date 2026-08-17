@@ -8,7 +8,8 @@ INCLUDE "defs.inc"
 
 DEF SAVE_MAGIC_0 EQU $53
 DEF SAVE_MAGIC_1 EQU $46
-DEF SAVE_VERSION EQU 6          ; v6: two rotating slots + sequence byte. v5 rejected.
+DEF SAVE_VERSION EQU 7          ; v7: + wHasDinghy in the upgrades block. v6 rejected.
+                                ; (v6: two rotating slots + sequence byte)
 
 ; Record layout (offsets into a slot)
     RSRESET
@@ -27,15 +28,15 @@ DEF SAVE_F_FINAL     RB 2       ; wFinal/wWon (contiguous)
 DEF SAVE_F_PORTCELLS RB 32      ; wPortCells
 DEF SAVE_F_BESTGOLD  RB 2       ; wBestGold
 DEF SAVE_F_CARTDONE  RB 1       ; wCartDone
-DEF SAVE_F_UPGRADES  RB 3       ; wHullMax/wMaxVel/wBallLife (contiguous)
+DEF SAVE_F_UPGRADES  RB 4       ; wHullMax/wMaxVel/wBallLife/wHasDinghy (contiguous)
 DEF SAVE_REC_SIZE    RB 0
 
 DEF SAVE_DATA_START EQU SAVE_F_SEED
 DEF SAVE_DATA_LEN   EQU SAVE_REC_SIZE - SAVE_F_SEED
 DEF SAVE_SLOT1      EQU $A070   ; slot 0 is $A000; $70 stride >= record size
 
-STATIC_ASSERT SAVE_REC_SIZE == 99
-STATIC_ASSERT SAVE_DATA_LEN == 94
+STATIC_ASSERT SAVE_REC_SIZE == 100
+STATIC_ASSERT SAVE_DATA_LEN == 95
 
 SECTION "Save WRAM", WRAM0
 wSaveSlot:: db          ; which slot the next SaveGame writes (0/1)
@@ -129,7 +130,7 @@ SaveGame::
     ld de, wCartDone
     ld b, SAVE_F_UPGRADES - SAVE_F_CARTDONE
     call CopyToSRAM
-    ld de, wHullMax                ; 3 contiguous upgrade bytes
+    ld de, wHullMax                ; 4 contiguous upgrade bytes
     ld b, SAVE_REC_SIZE - SAVE_F_UPGRADES
     call CopyToSRAM
     ; checksum = sum of the data bytes at slot base + SAVE_DATA_START
