@@ -104,7 +104,7 @@ TryDock::
     jr c, .beach
     ret                            ; no beach: no docking
 .beach
-    ; stash the beach tile coords (the isle checks clobber bc/de)
+    ; stash the beach tile coords (the port checks clobber bc/de)
     ld a, c
     ld [wBeachX], a
     ld a, b
@@ -113,25 +113,9 @@ TryDock::
     ld [wBeachY], a
     ld a, d
     ld [wBeachY+1], a
-    ; isle dig? (ship's current cell, set by MarkExplored)
-    ld a, [wShipCX]
-    ld b, a
-    ld a, [wShipCY]
-    ld c, a
-    call IsIsleCell
-    cp $FF
-    jr z, .notIsle
-    ld [wCurIsle], a
-    call TestFrag
-    and a
-    jr nz, .notIsle                ; already dug up
-    ld a, [wCurIsle]
-    call TestGuard
-    and a
-    jr z, .notIsle                 ; guardian alive: no digging yet
-    call DigScene
-    ret
-.notIsle
+    ; isle digs moved ashore with the dinghy (S2): an isle beach is not
+    ; a dock. Sail close, land, and walk to the X.
+
     ; district of the BEACH tile (from WRAM: calls above clobbered bc/de)
     ld a, [wBeachX]
     ld l, a

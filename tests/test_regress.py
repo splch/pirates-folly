@@ -130,6 +130,52 @@ def shown_tile(wx, wy, s16):
         return 14
     return t
 
+# shore (2x zoom) model: dig-site tests (R32+)
+def _mulmag16(m, f): return (m * f) >> 4
+def _lerp16(base, other, f):
+    d = other - base
+    return base + (_mulmag16(d, f) if d >= 0 else -_mulmag16(-d, f))
+def shore_elevation(sx, sy, s16):
+    ix, iy = sx >> 4, sy >> 4
+    fx, fy = sx & 15, sy & 15
+    h00 = lathash(ix, iy, s16); h10 = lathash(ix + 1, iy, s16)
+    h01 = lathash(ix, iy + 1, s16); h11 = lathash(ix + 1, iy + 1, s16)
+    return _lerp16(_lerp16(h00, h10, fx), _lerp16(h01, h11, fx), fy)
+def shore_detail(sx, sy, s16):
+    return mix16(((31 * sx + 63 * sy) & 0xFFFF) ^ s16) & 15
+def shore_tile(sx, sy, s16):
+    e = shore_elevation(sx, sy, s16)
+    if e < 132: return 1
+    if e < 148: return 2
+    if e < 158: return 3
+    d = shore_detail(sx, sy, s16)
+    if e < 205:
+        if d == 0: return 98
+        if d < 2: return 100
+        if d < 4: return 97
+        return 96
+    if d == 0: return 101
+    if d < 3: return 99
+    return 98
+def shore_walkable(t): return t in (3, 96, 97, 100)
+SITE_TRY = ((0, 0), (2, 0), (-2, 0), (0, 2), (0, -2), (2, 2), (-2, -2),
+            (2, -2), (-2, 2), (4, 0), (-4, 0), (0, 4), (0, -4))
+DIG_SALT = 0xD1C6
+def dig_site(cx, cy, isle, s16):
+    h1 = mix16(((cy * 16 + cx) * 251 & 0xFFFF) ^ s16 ^ DIG_SALT ^ isle)
+    h2 = mix16(h1 ^ 0x5A3C)
+    bx, by = cx * 40 + (h2 & 31), cy * 36 + ((h2 >> 4) & 31)
+    for dx, dy in SITE_TRY:
+        sx, sy = bx + dx, by + dy
+        if sx >= 0 and sy >= 0 and shore_walkable(shore_tile(sx, sy, s16)):
+            return (sx, sy)
+    for oy in range(36):
+        for ox in range(40):
+            sx, sy = cx * 40 + ox, cy * 36 + oy
+            if shore_walkable(shore_tile(sx, sy, s16)):
+                return (sx, sy)
+    return (cx * 40 + 20, cy * 36 + 18)
+
 def snap_dir(dx, dy):
     ax, ay = abs(dx), abs(dy)
     if 2 * ay < ax:
@@ -695,12 +741,21 @@ def r14_dig_no_cannon():
         if spot:
             break
     assert spot, "no beach-adjacent water in isle 0's cell"
-    assert teleport(pb, *spot), "teleport never stuck"
-    for _ in range(4):
-        pb.tick()
-    assert (mem[syms["wShipCX"]], mem[syms["wShipCY"]]) == (ix, iy)
     mem[syms["wGuardMask"]] = 1          # isle 0's guardian already sunk
-    press3(pb, "a")                      # dig up the fragment
+    mem[syms["wHasDinghy"]] = 1          # digs moved ashore in S2
+    assert teleport(pb, *spot), "teleport never stuck"
+    press3(pb, "a")                      # land
+    for _ in range(60):
+        pb.tick()
+    assert mem[syms["wState"]] == 9, "didn't go ashore"
+    dsx, dsy = dig_site(ix, iy, 0, s16)
+    set16(mem, "wShPosX", dsx * 8 + 4)
+    pb.tick()
+    set16(mem, "wShPosY", dsy * 8 + 4)
+    pb.tick()
+    for _ in range(30):
+        pb.tick()
+    press3(pb, "a")                      # dig at the X
     for _ in range(30):
         pb.tick()
     assert mem[syms["wState"]] == 5, f"state {mem[syms['wState']]}, want DIG"
@@ -1395,8 +1450,20 @@ def r32_dig_ceremony():
             break
     assert spot, "no beach-adjacent water in isle 0's cell"
     mem[syms["wGuardMask"]] = 1          # guardian pre-sunk: no spawn race
+    mem[syms["wHasDinghy"]] = 1          # digs moved ashore in S2
     assert teleport(pb, *spot), "teleport never stuck"
-    press3(pb, "a")
+    press3(pb, "a")                       # land
+    for _ in range(60):
+        pb.tick()
+    assert mem[syms["wState"]] == 9, "didn't go ashore"
+    dsx, dsy = dig_site(ix, iy, 0, s16)
+    set16(mem, "wShPosX", dsx * 8 + 4)
+    pb.tick()
+    set16(mem, "wShPosY", dsy * 8 + 4)
+    pb.tick()
+    for _ in range(30):
+        pb.tick()
+    press3(pb, "a")                       # dig at the X
     for _ in range(10):
         pb.tick()
     assert mem[syms["wState"]] == 5, "dig didn't open"
@@ -1407,10 +1474,12 @@ def r32_dig_ceremony():
         pb.tick()
     assert mem[syms["wDigT"]] == 0, "ceremony didn't skip"
     assert read_text(mem, 0x9800 + 4 * 32 + 5, 11) == "YOU FOUND A"
-    press3(pb, "a")                       # back to sea
-    assert wait_state(pb, 2), "never back to sailing"
+    press3(pb, "a")                       # back ashore
+    for _ in range(60):
+        pb.tick()
+    assert mem[syms["wState"]] == 9, "dig should return ashore"
     pb.stop()
-    print("R32 dig ceremony (knock, skip, reveal): OK")
+    print("R32 dig ceremony (knock, skip, reveal; exits to shore): OK")
 
 # ----------------- R33: SELECT mutes anywhere; re-rolls in the editor
 
@@ -1813,9 +1882,21 @@ def r43_text_screens_reset_scroll():
             break
     assert spot
     mem[syms["wGuardMask"]] = 1
+    mem[syms["wHasDinghy"]] = 1          # digs moved ashore in S2
     assert teleport(pb, *spot)
     # mid-sea camera: the scroll registers must be nonzero
     assert mem[0xFF43] != 0 or mem[0xFF42] != 0, "camera never scrolled"
+    press3(pb, "a")                        # land
+    for _ in range(60):
+        pb.tick()
+    assert mem[syms["wState"]] == 9, "didn't go ashore"
+    dsx, dsy = dig_site(ix, iy, 0, s16)
+    set16(mem, "wShPosX", dsx * 8 + 4)
+    pb.tick()
+    set16(mem, "wShPosY", dsy * 8 + 4)
+    pb.tick()
+    for _ in range(30):
+        pb.tick()
     press3(pb, "a")                        # dig scene (a text screen)
     for _ in range(10):
         pb.tick()

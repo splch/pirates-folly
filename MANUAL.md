@@ -57,9 +57,10 @@ and carry her way, so ease off before the shore!
 
 **A Button**
 
-*At sea:* Dock at a friendly beach, fire the cannons, dig for treasure
-on an Isle of Legend, or — with the dinghy aboard — land on any beach.
-*Ashore:* Reboard the dinghy.
+*At sea:* Dock at a friendly beach, fire the cannons, or — with the
+dinghy aboard — land on any beach.
+*Ashore:* Dig up a chest or the X on an Isle of Legend, read a landmark,
+or reboard the dinghy.
 *In port:* Confirm a selection.
 *On the title screen:* Begin.
 
@@ -281,12 +282,14 @@ and its guardian will find *you*.
 
 ## DIGGING FOR FRAGMENTS
 
-Each isle's beach hides a **chart fragment** — but the sand only gives it
-up once the isle's guardian lies at the bottom of the sea.
+Each isle hides a **chart fragment** in its soil — but the ground only
+gives it up once the isle's guardian lies at the bottom of the sea.
 
 1. Find an isle (the tavern always knows the nearest).
 2. Sink its guardian.
-3. Land on its beach and press **A** to dig.
+3. Land the **dinghy** on its beach — no dinghy, no treasure, so buy one
+   at the shipyard early.
+4. Walk inland to the **X** and press **A** to dig.
 
 With every fragment the screen tells you how many you hold — *three of
 nine* and counting. X marks the spot, Captain, nine times over.

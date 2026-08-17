@@ -102,6 +102,7 @@ DEF TILE_SITE_CHEST  EQU 109    ; shore site sprites (109-112)
 DEF TILE_SITE_DEBRIS EQU 110
 DEF TILE_SITE_GIBBET EQU 111
 DEF TILE_SITE_SKULL  EQU 112
+DEF TILE_DIGX        EQU 113    ; dig site: X marks the spot
 
 ; --- Shore sites (hash-placed loot & lore landmarks) ---
 ; Two consumable slots per chart cell (dug bitmap: bit = cell*2+slot);
@@ -111,10 +112,12 @@ DEF SITE_CHEST   EQU 1
 DEF SITE_DEBRIS  EQU 2
 DEF SITE_GIBBET  EQU 3
 DEF SITE_SKULL   EQU 4
+DEF SITE_DIG     EQU 5          ; isle dig site (X): guardian dead, fragment undug
 DEF SITE_SALT0   EQU $3D09
 DEF SITE_SALT1   EQU $A23E
 DEF SITE_SALT2   EQU $5A3C
 DEF LAND_SALT    EQU $7B1E
+DEF DIG_SALT     EQU $D1C6      ; isle dig-site placement (xored with the isle index)
 
 ; --- Shore mode geometry (2x the ocean, same lattice) ---
 DEF SHORE_W       EQU 640       ; tiles (2x WORLD_W)

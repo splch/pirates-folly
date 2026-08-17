@@ -31,7 +31,7 @@ then flash it to a cartridge or open it in any Game Boy emulator
 | Button | At sea | In port | Elsewhere |
 |---|---|---|---|
 | D-pad | Sail (momentum — ease off!) | Menus | Edit seed digits |
-| A | Dock at a beach / fire cannons / **dig** on an isle / **go ashore** (with the dinghy) | Confirm / buy (RIGHT) | New game (seed screen) / reboard (ashore) |
+| A | Dock at a beach / fire cannons / **go ashore** (with the dinghy) | Confirm / buy (RIGHT) | New game (seed screen); ashore: dig the X / reboard |
 | B | Quit to seed screen (press twice; unsaved) | Back / set sail | — |
 | SELECT | Mute sound | Mute sound | Re-roll the seed (seed screen) |
 | START | **The chart** (your map fills in as you explore) | — | Continue a saved game |
@@ -56,8 +56,9 @@ then flash it to a cartridge or open it in any Game Boy emulator
   and press **A** to reboard.
 - **Win, and keep sailing.** The Treasure's curse: after victory, charted
   waters roll encounters at full rate — a won sea never calms.
-- **Digging.** An isle's beach only gives up its fragment once its guardian
-  is sunk.
+- **Digging.** An isle's fragment only comes out of the ground once its
+  guardian is sunk — and you'll need the **dinghy**: land on the isle, walk
+  to the X, and dig it up. No dinghy, no Treasure.
 - **Merchants.** Lone sails hail you at close range: buy a small lot at half
   price (A), or rob the strongbox (B) — half of them sail with an escort that
   will come for you.

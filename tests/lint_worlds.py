@@ -44,6 +44,51 @@ def district_hash(dx, dy, seed16):
     return mix16((((dx*37 + dy*91) & 0xFFFF) ^ seed16 ^ 0x7E55))
 def has_port(dx, dy, seed16):
     return (district_hash(dx, dy, seed16) & 0x3F) < 12
+
+# shore (2x zoom) model: isle dig-site placement (src/shore.asm DigSitePlace)
+def _mulmag16(m, f): return (m * f) >> 4
+def _lerp16(base, other, f):
+    d = other - base
+    return base + (_mulmag16(d, f) if d >= 0 else -_mulmag16(-d, f))
+def shore_elevation(sx, sy, seed16):
+    ix, iy = sx >> 4, sy >> 4
+    fx, fy = sx & 15, sy & 15
+    h00 = lathash(ix, iy, seed16); h10 = lathash(ix+1, iy, seed16)
+    h01 = lathash(ix, iy+1, seed16); h11 = lathash(ix+1, iy+1, seed16)
+    return _lerp16(_lerp16(h00, h10, fx), _lerp16(h01, h11, fx), fy)
+def shore_detail(sx, sy, seed16):
+    return mix16(((31*sx + 63*sy) & 0xFFFF) ^ seed16) & 15
+def shore_tile(sx, sy, seed16):
+    e = shore_elevation(sx, sy, seed16)
+    if e < 132: return 1
+    if e < 148: return 2
+    if e < 158: return 3
+    d = shore_detail(sx, sy, seed16)
+    if e < 205:
+        if d == 0: return 98
+        if d < 2: return 100
+        if d < 4: return 97
+        return 96
+    if d == 0: return 101
+    if d < 3: return 99
+    return 98
+def shore_walkable(t): return t in (3, 96, 97, 100)
+SITE_TRY = ((0,0),(2,0),(-2,0),(0,2),(0,-2),(2,2),(-2,-2),(2,-2),(-2,2),
+            (4,0),(-4,0),(0,4),(0,-4))
+def dig_site(cx, cy, isle, seed16):
+    h1 = mix16(((cy*16 + cx) * 251 & 0xFFFF) ^ seed16 ^ 0xD1C6 ^ isle)
+    h2 = mix16(h1 ^ 0x5A3C)
+    bx, by = cx*40 + (h2 & 31), cy*36 + ((h2 >> 4) & 31)
+    for dx, dy in SITE_TRY:
+        sx, sy = bx + dx, by + dy
+        if sx >= 0 and sy >= 0 and shore_walkable(shore_tile(sx, sy, seed16)):
+            return (sx, sy, True)
+    for oy in range(36):
+        for ox in range(40):
+            sx, sy = cx*40+ox, cy*36+oy
+            if shore_walkable(shore_tile(sx, sy, seed16)):
+                return (sx, sy, True)
+    return (cx*40 + 20, cy*36 + 18, False)   # fallback: flag it
 def district_land_game(dx, dy, seed16):
     # game's 4-sample rule
     for ox, oy in ((1,1),(2,1),(1,2),(2,2)):
@@ -74,6 +119,7 @@ SEEDS = [0xDEADBEEF, 0x00000001, 0x12345678, 0xCAFEBABE, 0x0F0F0F0F,
 landless_isles = 0; total_isles = 0
 ports_hash = ports_game_land = ports_true_land = 0
 spawn_ok = 0
+unplaced_digs = 0
 for s in SEEDS:
     nib = [(s >> 28) & 15, (s >> 24) & 15, (s >> 20) & 15, (s >> 16) & 15,
            (s >> 12) & 15, (s >> 8) & 15, (s >> 4) & 15, s & 15]
@@ -89,6 +135,11 @@ for s in SEEDS:
         total_isles += 1
         if not cell_has_land(cx, cy, seed16):
             landless_isles += 1; bad += 1
+        # S2: every isle's dig site must land on walkable ground (the
+        # fallback cell-center is flagged unplaceable)
+        dsx, dsy, ok = dig_site(cx, cy, k, seed16)
+        if not ok:
+            unplaced_digs += 1; bad += 1
     # spawn
     px = mem[syms["wPosX"]] | mem[syms["wPosX"]+1] << 8
     py = mem[syms["wPosY"]] | mem[syms["wPosY"]+1] << 8
@@ -109,5 +160,7 @@ for s in SEEDS:
 
 print(f"\n{len(SEEDS)} seeds:")
 print(f"  isles landless: {landless_isles}/{total_isles}")
+print(f"  dig sites unwalkable (fallback used): {unplaced_digs}/{total_isles}")
 print(f"  spawns on water: {spawn_ok}/{len(SEEDS)}")
+assert landless_isles == 0 and unplaced_digs == 0 and spawn_ok == len(SEEDS)
 print(f"  port districts (hash): {ports_hash}; land per game rule: {ports_game_land}; land full-scan: {ports_true_land}")

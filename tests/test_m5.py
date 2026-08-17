@@ -66,6 +66,61 @@ def elevation(wx, wy):
 def model_tile(wx, wy):
     e = elevation(wx, wy)
     return 1 if e < 132 else (2 if e < 148 else (3 if e < 158 else 4))
+
+# shore model (2x zoom; mirrors src/shore.asm)
+def _mulmag16(m, f): return (m * f) >> 4
+def _lerp16(base, other, f):
+    d = other - base
+    return base + (_mulmag16(d, f) if d >= 0 else -_mulmag16(-d, f))
+def shore_elevation(sx, sy):
+    ix, iy = sx >> 4, sy >> 4
+    fx, fy = sx & 15, sy & 15
+    h00 = lathash(ix, iy); h10 = lathash(ix+1, iy); h01 = lathash(ix, iy+1); h11 = lathash(ix+1, iy+1)
+    return _lerp16(_lerp16(h00, h10, fx), _lerp16(h01, h11, fx), fy)
+def shore_detail(sx, sy):
+    return mix16(((31 * sx + 63 * sy) & 0xFFFF) ^ SEED) & 15
+def shore_tile(sx, sy):
+    e = shore_elevation(sx, sy)
+    if e < 132: return 1
+    if e < 148: return 2
+    if e < 158: return 3
+    d = shore_detail(sx, sy)
+    if e < 205:
+        if d == 0: return 98
+        if d < 2: return 100
+        if d < 4: return 97
+        return 96
+    if d == 0: return 101
+    if d < 3: return 99
+    return 98
+def shore_walkable(t): return t in (3, 96, 97, 100)
+SITE_TRY = ((0, 0), (2, 0), (-2, 0), (0, 2), (0, -2), (2, 2), (-2, -2),
+            (2, -2), (-2, 2), (4, 0), (-4, 0), (0, 4), (0, -4))
+DIG_SALT = 0xD1C6
+def dig_site(cx, cy, isle):
+    h1 = mix16(((cy * 16 + cx) * 251 & 0xFFFF) ^ SEED ^ DIG_SALT ^ isle)
+    h2 = mix16(h1 ^ 0x5A3C)
+    bx, by = cx * 40 + (h2 & 31), cy * 36 + ((h2 >> 4) & 31)
+    for dx, dy in SITE_TRY:
+        sx, sy = bx + dx, by + dy
+        if sx >= 0 and sy >= 0 and shore_walkable(shore_tile(sx, sy)):
+            return (sx, sy)
+    for oy in range(36):
+        for ox in range(40):
+            sx, sy = cx * 40 + ox, cy * 36 + oy
+            if shore_walkable(shore_tile(sx, sy)):
+                return (sx, sy)
+    return (cx * 40 + 20, cy * 36 + 18)
+def go_ashore(sx, sy):
+    set16("wShPosX", sx * 8 + 4); pb.tick()
+    set16("wShPosY", sy * 8 + 4); pb.tick()
+    for _ in range(30): pb.tick()
+def reboard():
+    set16("wShPosX", w16("wDingX")); pb.tick()
+    set16("wShPosY", w16("wDingY")); pb.tick()
+    press("a", 5)
+    for _ in range(120): pb.tick()
+    assert mem[syms["wState"]] == 2, "reboard failed (state %d)" % mem[syms["wState"]]
 def find_approach(isle):
     cx, cy = isle
     for ty in range(cy*18, cy*18+18):
@@ -113,14 +168,16 @@ assert mem[syms["wEnemyActive"]] == 1, "guardian didn't spawn"
 assert mem[syms["wIsGuardian"]] == 1, "spawned enemy isn't a guardian"
 assert mem[syms["wEnemyHP"]] == 5, "guardian should have 5 HP"
 
-# dock attempt BEFORE defeating guardian -> no dig
-press("a")
-st = mem[syms["wState"]]
-assert st != 5, "dig should be blocked while guardian lives"
-print("dig blocked while guardian alive: OK (state", st, ")")
-if st == 4:  # beach was also a port: B once returns to sailing
-    press("b", 60)
-    assert mem[syms["wState"]] == 2
+# land BEFORE defeating the guardian: no X, digging does nothing
+mem[syms["wHasDinghy"]] = 1
+press("a", 60)  # land on the isle's beach
+assert mem[syms["wState"]] == 9, "didn't go ashore (state %d)" % mem[syms["wState"]]
+dsx, dsy = dig_site(isle0[0], isle0[1], 0)
+go_ashore(dsx, dsy)
+press("a", 5)
+assert mem[syms["wState"]] == 9, "dig should be blocked while the guardian lives"
+print("dig blocked while guardian alive: OK")
+reboard()
 
 # sink the guardian: weaken + overlapping player ball
 mem[syms["wEnemyHP"]] = 1
@@ -138,9 +195,13 @@ gm = w16("wGuardMask")
 print("guardian sunk, guardMask =", bin(gm))
 assert gm & 1, "guard bit not set"
 
-# now dock -> dig scene
-press("a", 60)  # open the dig (ceremony: ~90 frames of digging)
-print("state after dock A:", mem[syms["wState"]])
+# land again, walk to the X, dig
+press("a", 60)  # land
+for _ in range(30):
+    pb.tick()
+assert mem[syms["wState"]] == 9, "didn't land for the dig"
+go_ashore(dsx, dsy)
+press("a", 60)  # dig scene opens
 assert mem[syms["wState"]] == 5, "dig scene didn't open"
 fm = w16("wFragMask")
 print("fragMask =", bin(fm))
@@ -148,9 +209,12 @@ assert fm & 1, "fragment not collected"
 press("a", 5)   # skip the ceremony to the reveal
 assert mem[syms["wDigT"]] == 0, "ceremony didn't skip to the reveal"
 assert mem[syms["wState"]] == 5, "reveal left the dig state"
-press("a", 60)  # leave dig scene
-assert mem[syms["wState"]] == 2, "dig scene didn't exit"
-print("dig scene: OK")
+press("a", 60)  # leave dig scene (back ashore now: the X is on land)
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 9, "dig scene should return ashore"
+reboard()
+print("dig scene (ashore): OK")
 
 # --- final battle: set fragments for isles 1-7 (leave isle 8 = bit 8) ---
 # our dig was isle 0. Set isles 1..7 collected, then dig isle 8.
@@ -167,7 +231,13 @@ tx, ty = find_approach(isle8)
 assert teleport(pb, tx, ty), "teleport to isle 8's cell never stuck"
 for _ in range(10):
     pb.tick()
-# guardian for isle 8 will try to spawn (guard bit set -> TestGuard says defeated -> no spawn)
+# guardian for isle 8 will try to spawn (guard bit set -> no spawn)
+press("a", 60)  # land
+d8x, d8y = dig_site(isle8[0], isle8[1], 8)
+for _ in range(30):
+    pb.tick()
+assert mem[syms["wState"]] == 9, "didn't land on isle 8"
+go_ashore(d8x, d8y)
 press("a", 60)
 print("state after 9th dig A:", mem[syms["wState"]])
 assert mem[syms["wState"]] == 5, "9th dig scene didn't open"
@@ -175,7 +245,10 @@ press("a", 5)   # skip the ceremony to the reveal
 print("diag: curIsle", mem[syms["wCurIsle"]], "fragMask", hex(w16("wFragMask")), "final", mem[syms["wFinal"]])
 assert mem[syms["wFinal"]] >= 1, "final battle not triggered"
 press("a", 60)
-assert mem[syms["wState"]] == 2
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 9, "9th dig should return ashore"
+reboard()
 
 # sink all four waves; each sink may instantly spawn the next. Waves
 # escalate: wave k has 5+k HP (checked before weakening) and faster guns.

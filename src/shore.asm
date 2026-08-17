@@ -1047,7 +1047,7 @@ ShoreFillScreen:
     ret
 
 ; LCD off -> fully rebuilt -> LCD on.
-ShoreRedrawBody:
+ShoreRedrawBody::
     call ComputeShTiles
     call ShoreFillScreen
     ; the full refill makes any queued/in-flight stream work stale
@@ -1418,7 +1418,11 @@ ShAddSigned:
     ld h, a
     ret
 
-SITE_TRY: db 0, 0, 2, 0, -2, 0, 0, 2, 0, -2, 2, 2
+; Try offsets for site placement: near ring, corners, then a wider ring.
+; Dig sites are the win condition, so the search is wider than S1's was.
+SITE_TRY: db 0, 0, 2, 0, -2, 0, 0, 2, 0, -2, 2, 2, -2, -2, 2, -2, -2, 2
+          db 4, 0, -4, 0, 0, 4, 0, -4
+DEF SITE_TRIES EQU 13
 
 ; in: hl = a site's first hash (h1); out: a = 1 and wSiteX/wSiteY = px
 ; center iff a walkable position was found near the hashed spot.
@@ -1512,7 +1516,7 @@ SitePlace:
     ld a, [wSiteTry]
     inc a
     ld [wSiteTry], a
-    cp 6
+    cp SITE_TRIES
     jp nz, .try
     xor a
     ret
@@ -1707,6 +1711,129 @@ SiteDugSet:
     ld [hl], a
     ret
 
+; in: b = cx, c = cy (the isle's cell), d = isle index
+; out: a = 1 and wSiteX/wSiteY = px center. h1 = Mix16(cell*251 ^ seed16
+; ^ DIG_SALT ^ isle). The win condition needs a diggable spot in every
+; isle cell: if the hashed neighborhood is all unwalkable, fall back to a
+; full-cell scan, then to the cell center (the lint sweep flags that).
+DigSitePlace:
+    ld a, b
+    ld [wChX], a
+    ld a, c
+    ld [wChY], a
+    ld a, d
+    ld [wSiteSlot], a              ; stash the isle index: Mul8 clobbers d
+    ld a, c
+    swap a
+    add b
+    ld b, 251
+    call Mul8
+    ld a, [wSeed16]
+    xor h
+    ld h, a
+    ld a, [wSeed16+1]
+    xor l
+    ld l, a
+    ld a, h
+    xor HIGH(DIG_SALT)
+    ld h, a
+    ld a, l
+    xor LOW(DIG_SALT)
+    ld l, a
+    ld a, [wSiteSlot]
+    xor l                          ; mix in the isle index (low byte)
+    ld l, a
+    call Mix16
+    call SitePlace
+    and a
+    ret nz
+    ; fallback: first walkable tile in the cell (row-major scan)
+    ld a, [wChX]
+    ld b, 40
+    call Mul8
+    ld a, l
+    ld [wSpX], a                   ; x0
+    ld a, h
+    ld [wSpX+1], a
+    ld a, [wChY]
+    ld b, 36
+    call Mul8
+    ld a, l
+    ld [wSpX2], a                  ; y0
+    ld a, h
+    ld [wSpX2+1], a
+    xor a
+    ld [wSiteTry], a               ; row within the cell
+.scanY
+    xor a
+    ld [wSiteSlot], a              ; column within the cell (dead here)
+.scanX
+    ld a, [wSpX2]
+    ld hl, wSiteTry
+    add a, [hl]
+    ld e, a
+    ld a, [wSpX2+1]
+    adc 0
+    ld d, a                        ; de = sy
+    ld a, [wSpX]
+    ld hl, wSiteSlot
+    add a, [hl]
+    ld c, a
+    ld a, [wSpX+1]
+    adc 0
+    ld b, a                        ; bc = sx
+    push bc
+    push de
+    call ShoreTile
+    call ShoreWalkable
+    pop de
+    pop bc
+    and a
+    jr nz, .scanFound
+    ld a, [wSiteSlot]
+    inc a
+    ld [wSiteSlot], a
+    cp 40
+    jr nz, .scanX
+    ld a, [wSiteTry]
+    inc a
+    ld [wSiteTry], a
+    cp 36
+    jr nz, .scanY
+    ; pathological: no walkable tile at all. Cell center; the dig works
+    ; from adjacency, and the world lint flags unwalkable placements.
+    ld a, [wSpX]
+    add 20
+    ld c, a
+    ld a, [wSpX+1]
+    adc 0
+    ld b, a
+    ld a, [wSpX2]
+    add 18
+    ld e, a
+    ld a, [wSpX2+1]
+    adc 0
+    ld d, a
+    jr .placeAt
+.scanFound
+.placeAt
+    SL16 b, c, 3
+    ld a, c
+    add 4
+    ld [wSiteX], a
+    ld a, b
+    adc 0
+    ld [wSiteX+1], a
+    SL16 d, e, 3
+    ld a, e
+    add 4
+    ld [wSiteY], a
+    ld a, d
+    adc 0
+    ld [wSiteY+1], a
+    ld a, 1
+    ret
+
 ; append wSiteType/wSiteX/wSiteY/wSiteBit/wSiteLoot as a list entry (cap 6)
 SiteAppend:
     ld a, [wSiteCount]
@@ -1825,19 +1952,67 @@ ShoreSites:
     ld c, a
     call LandmarkEval
     and a
+    jr z, .noLandmark
+    call SiteAppend
+.noLandmark
+    ; isle dig site: this cell is an isle cell, its guardian is sunk, and
+    ; its fragment is still in the ground
+    ld a, [wSiteCX0]
+    ld hl, wSiteGood
+    add a, [hl]
+    ld b, a
+    ld a, [wSiteCY0]
+    ld hl, wSiteQty
+    add a, [hl]
+    ld c, a
+    push bc
+    ld hl, IsIsleCell
+    call FarCall3
+    pop bc
+    cp $FF
     jr z, .cellDone
+    ld d, a                        ; isle index
+    ld a, b
+    ld [wSiteDX], a                ; the FarCalls clobber bc
+    ld a, c
+    ld [wSiteDY], a
+    ld a, d
+    ld [wSiteLoot], a              ; stash the isle index
+    ld hl, TestGuard
+    call FarCall3                  ; a = 1 iff guardian defeated
+    and a
+    jr z, .cellDone                ; the guardian still watches: no X
+    ld a, [wSiteLoot]
+    ld hl, TestFrag
+    call FarCall3                  ; a = 1 iff fragment collected
+    and a
+    jr nz, .cellDone               ; already dug up
+    ld a, [wSiteDX]
+    ld b, a
+    ld a, [wSiteDY]
+    ld c, a
+    ld a, [wSiteLoot]
+    ld d, a
+    call DigSitePlace
+    and a
+    jr z, .cellDone
+    ld a, SITE_DIG
+    ld [wSiteType], a
+    ld a, $FF
+    ld [wSiteBit], a               ; the fragment mask, not the dug
+    ld [wSiteBit+1], a             ;   bitmap, governs the X
     call SiteAppend
 .cellDone
     ld a, [wSiteGood]
     inc a
     ld [wSiteGood], a
     cp 2
-    jr nz, .cellX
+    jp nz, .cellX                    ; the isle dig check grew past jr range
     ld a, [wSiteQty]
     inc a
     ld [wSiteQty], a
     cp 2
-    jr nz, .cellY
+    jp nz, .cellY
     ret
 
 ; Write site sprites into shadow OAM entries 2-7 (hidden when off-screen).
@@ -2011,6 +2186,8 @@ TrySite:
     pop bc                           ; the loop counter is dead: the loot
                                      ; paths jp out, so balance the stack
     ld a, [wSiteType]                ; holds the sprite TILE (108 + type)
+    cp TILE_DIGX
+    jp z, .dig
     cp TILE_SITE_GIBBET
     jp nc, .lore
     ; consumable: remember the entry start for .consume
@@ -2112,6 +2289,45 @@ TrySite:
     ld hl, PlaySfx
     call FarCall3
     ret
+; The X on an isle with a sunk guardian: dig up the chart fragment.
+.dig
+    ; the isle index from the player's cell (the X is in it)
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    SR16 h, l, 3
+    ld b, 40
+    call DivHLb
+    ld b, a
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    SR16 h, l, 3
+    push bc
+    ld b, 36
+    call DivHLb
+    pop bc                           ; restore b (cx) BEFORE writing c:
+    ld c, a                          ;   the pop used to clobber cy
+    push bc
+    ld hl, IsIsleCell
+    call FarCall3
+    pop bc
+    cp $FF
+    jp z, .farPop2                   ; not an isle cell: can't happen
+    ld [wCurIsle], a
+    ; the X vanishes while the ceremony runs
+    ld a, [wSiteCur]
+    ld l, a
+    ld a, [wSiteCur+1]
+    ld h, a
+    xor a
+    ld [hl], a
+    ld hl, DigScene
+    call FarCall3                    ; sets STATE_DIG; returns ashore after
+    ld a, 1
+    ret
 .lore
     cp TILE_SITE_SKULL
     jr z, .skull
@@ -2130,6 +2346,9 @@ TrySite:
     pop hl                           ; entry cursor (at the loot byte)
     inc hl                           ; -> next entry
     jr .next
+.farPop2
+    xor a                          ; balanced: the dispatch already popped
+    ret
 .nextEntry
     ld de, 8
     add hl, de
@@ -2339,13 +2558,11 @@ UpdateShore::
     ldh a, [hJoyNew]
     and PADF_A
     jr z, .noA
-    call TryReboard
-    ld a, [wState]
-    cp STATE_SHORE
-    ret nz                         ; reboarded
-    call TrySite
+    call TrySite                   ; a site under your boots wins the press
     and a
     ret nz                         ; looted or learned: press consumed
+    call TryReboard                ; else: beside the dinghy -> back aboard
+    ret
 .noA
     call ShoreMove
     call ShoreCamera

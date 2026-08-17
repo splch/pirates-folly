@@ -89,7 +89,26 @@ def enc_hash(cx, cy, s16):
 
 # --- S1: shore sites (mirror of SiteEval / LandmarkEval in shore.asm) ---
 SITE_SALT0, SITE_SALT1, SITE_SALT2, LAND_SALT = 0x3D09, 0xA23E, 0x5A3C, 0x7B1E
-SITE_TRY = ((0, 0), (2, 0), (-2, 0), (0, 2), (0, -2), (2, 2))
+DIG_SALT = 0xD1C6
+SITE_TRY = ((0, 0), (2, 0), (-2, 0), (0, 2), (0, -2), (2, 2), (-2, -2),
+            (2, -2), (-2, 2), (4, 0), (-4, 0), (0, 4), (0, -4))
+
+def dig_site(cx, cy, isle, s16):
+    """Mirror of shore.asm DigSitePlace: hash placement, scan fallback,
+    then the cell center. Returns (sx, sy) shore tile coords."""
+    h1 = mix16(((cy * 16 + cx) * 251 & 0xFFFF) ^ s16 ^ DIG_SALT ^ isle)
+    h2 = mix16(h1 ^ SITE_SALT2)
+    bx, by = cx * 40 + (h2 & 31), cy * 36 + ((h2 >> 4) & 31)
+    for dx, dy in SITE_TRY:
+        sx, sy = bx + dx, by + dy
+        if sx >= 0 and sy >= 0 and shore_walkable(shore_tile(sx, sy, s16)):
+            return (sx, sy)
+    for oy in range(36):
+        for ox in range(40):
+            sx, sy = cx * 40 + ox, cy * 36 + oy
+            if shore_walkable(shore_tile(sx, sy, s16)):
+                return (sx, sy)
+    return (cx * 40 + 20, cy * 36 + 18)
 
 def _site_place(h1, cx, cy, s16):
     h2 = mix16(h1 ^ SITE_SALT2)
@@ -197,9 +216,11 @@ def set16(mem, n, v):
     mem[syms[n] + 1] = v >> 8
 
 def row8_has_text(mem):
-    """Is the loot/lore message screen showing? Text tiles (16-67) never
-    overlap shore terrain tiles (1-3, 96-101)."""
-    return any(16 <= mem[0x9800 + 8 * 32 + i] <= 67 for i in range(20))
+    """Is a message/text screen showing? Text tiles (16-67) never overlap
+    shore terrain tiles (1-3, 96-101). Scans rows 3-13 (loot/lore messages
+    sit at row 8; the dig ceremony at rows 4/6)."""
+    return any(16 <= mem[0x9800 + r * 32 + i] <= 67
+               for r in range(3, 14) for i in range(20))
 
 def press_a_and_await_text(pb, want_txt=None, tries=6):
     """Press A until the message screen shows (presses can land inside a
@@ -214,8 +235,9 @@ def press_a_and_await_text(pb, want_txt=None, tries=6):
                     return True
                 got = "".join(chr(t - 40 + ord('A')) if 40 <= t <= 65 else
                               str(t - 16) if 16 <= t <= 25 else " "
-                              for t in (mem[0x9800 + 8 * 32 + i] for i in range(20)))
-                if want_txt in got:
+                              for r in range(3, 14)
+                              for t in (mem[0x9800 + r * 32 + i] for i in range(20)))
+                if want_txt.replace(" ", "") in got.replace(" ", ""):
                     return True
     return False
 
@@ -428,6 +450,30 @@ for attempt in range(2):             # twice: landmarks are not consumed
     assert press_a_and_await_text(pb, want_txt), f"landmark text never showed"
     dismiss_and_wait(pb)
 print(f"landmark '{want_txt}' shows twice (not consumed): OK")
+
+# --- S2: the isle dig site (X) appears once the guardian is sunk ---
+# use isle 0: read its cell from the game, sink its guardian by fiat
+isle0 = (mem[syms["wIsles"]], mem[syms["wIsles"] + 1])
+dx_px = dig_site(*isle0, 0, s16)
+# the dig works from adjacency; walkability of the site itself is the lint's job
+set16(mem, "wGuardMask", 1)          # guardian pre-sunk
+go_to(mem, dx_px[0] * 8 + 4, dx_px[1] * 8 + 4)
+for _ in range(30):
+    pb.tick()                        # site list refresh
+assert press_a_and_await_text(pb, "X MARKS THE SPOT"), "no dig scene at the X"
+assert mem[syms["wState"]] == 5, "not in the dig scene"
+fm0 = w16(mem, "wFragMask")
+assert fm0 & 1, "fragment bit not set at dig start"
+press3(pb, "a")                      # skip the ceremony to the reveal
+for _ in range(15):
+    pb.tick()
+assert mem[syms["wDigT"]] == 0, "ceremony didn't skip"
+press3(pb, "a")                      # leave the dig
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 9, \
+    f"dig should return ashore (state {mem[syms['wState']]}, want 9)"
+print(f"dig site at {dx_px} (isle 0 cell {isle0}): fragment dug, back ashore: OK")
 
 # reboard: stand on the dinghy, press A. A press landing inside a screen
 # rebuild vanishes, and one can wake a stale message instead — retry.

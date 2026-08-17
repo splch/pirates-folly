@@ -574,8 +574,10 @@ UpdateDig::
     ldh a, [hJoyNew]
     and a
     ret z
-    call SailRedraw
-    ld a, STATE_SAIL
+    ; digs happen ashore now (S2): return to the island, not the sea
+    ld hl, ShoreRedrawBody
+    call FarCall4
+    ld a, STATE_SHORE
     ld [wState], a
     ret
 

@@ -41,7 +41,7 @@ LoadTiles::
     call CopyVRAM
     ld hl, ShoreSprites
     ld de, $8000 + 104 * 16
-    ld bc, 9 * 16
+    ld bc, 10 * 16
     call CopyVRAM
     ld hl, SkullTile
     ld de, $8000 + 68 * 16
@@ -990,6 +990,15 @@ ShoreSprites:
     dw `00020000
     dw `00020000
     dw `00222200
+; 113 TILE_DIGX — X marks the spot
+    dw `00000000
+    dw `03000030
+    dw `00300300
+    dw `00033000
+    dw `00033000
+    dw `00300300
+    dw `03000030
+    dw `00000000
 
 SECTION "Ball tile", ROMX, BANK[3]
 BallTile:
