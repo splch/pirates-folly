@@ -27,6 +27,26 @@ wShHeading:  db
 wDingX:      dw             ; dinghy world px (reboard point)
 wDingY:      dw
 
+; Shore sites (S1): hash-placed chests, salvage, and lore landmarks.
+; Active list entry, 8 bytes: sprite tile, x px (dw), y px (dw),
+; dug-bit index (dw; $FFFF for landmarks), loot byte.
+wSiteList:   ds 48          ; 6 entries x 8
+wSiteCount:  db
+wSiteCX0:    db             ; camera cell of the last refresh ($FF = stale)
+wSiteCY0:    db
+wSiteSlot:   db             ; eval slot / refresh loop index
+wSiteX:      dw             ; SiteEval output: px center
+wSiteY:      dw
+wSiteBit:    dw             ; SiteEval output: dug-bit index
+wSiteLoot:   db             ; SiteEval output: loot byte
+wSiteType:   db
+wSiteQty:    db             ; loot scratch (amount / qty) / refresh cell dy
+wSiteGood:   db             ; loot scratch (good index) / refresh cell dx
+wSiteCur:    dw             ; list cursor of the site being looted
+wSiteTry:    db             ; SitePlace: try index (must NOT alias the
+wSiteDX:     db             ;   refresh loop counters — SitePlace runs
+wSiteDY:     db             ;   inside them; wSiteDX/DY are its dx/dy temps)
+
 SECTION "Shore", ROMX, BANK[4]
 
 ; ---------------------------------------------------------------------------
@@ -1045,6 +1065,8 @@ ShoreRedrawBody:
     dec b
     jr nz, .clr
     call SetupHud
+    dec a                          ; $FF: force a site-list refresh
+    ld [wSiteCX0], a
     call ShoreSprites
     ld a, [wShCamX]
     ldh [rSCX], a
@@ -1377,6 +1399,787 @@ ShoreMove:
     ret
 
 ; ---------------------------------------------------------------------------
+; Shore sites (S1): chests, salvage, landmarks
+; ---------------------------------------------------------------------------
+
+; hl += sign-extend(a). clobbers a, d, e
+ShAddSigned:
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .p
+    dec d
+.p
+    ld a, l
+    add e
+    ld l, a
+    ld a, h
+    adc d
+    ld h, a
+    ret
+
+SITE_TRY: db 0, 0, 2, 0, -2, 0, 0, 2, 0, -2, 2, 2
+
+; in: hl = a site's first hash (h1); out: a = 1 and wSiteX/wSiteY = px
+; center iff a walkable position was found near the hashed spot.
+; clobbers all
+SitePlace:
+    ; h2 = Mix16(h1 ^ SITE_SALT2)
+    ld a, h
+    xor HIGH(SITE_SALT2)
+    ld h, a
+    ld a, l
+    xor LOW(SITE_SALT2)
+    ld l, a
+    call Mix16                       ; h2
+    ; ox = h2 & 31, oy = (h2>>4) & 31
+    ld a, l
+    and 31
+    ld [wSpX], a
+    xor a
+    ld [wSpX+1], a
+    SR16 h, l, 4
+    ld a, l
+    and 31
+    ld [wSpX2], a
+    xor a
+    ld [wSpX2+1], a
+    ; base = (cx*40 + ox, cy*36 + oy)
+    ld a, [wChX]
+    ld b, 40
+    call Mul8                        ; hl = cx*40
+    ld a, [wSpX]
+    add l
+    ld [wSpX], a
+    ld a, h
+    adc 0
+    ld [wSpX+1], a
+    ld a, [wChY]
+    ld b, 36
+    call Mul8                        ; hl = cy*36
+    ld a, [wSpX2]
+    add l
+    ld [wSpX2], a
+    ld a, h
+    adc 0
+    ld [wSpX2+1], a
+    ; walkable-position scan over SITE_TRY offsets
+    xor a
+    ld [wSiteTry], a                 ; try index
+.try
+    ld a, [wSiteTry]
+    add a
+    ld hl, SITE_TRY
+    ld e, a
+    ld d, 0
+    add hl, de
+    ld a, [hli]
+    ld [wSiteDX], a                  ; dx (signed)
+    ld a, [hl]
+    ld [wSiteDY], a                  ; dy (signed)
+    ; sx = base + dx, into bc FIRST: ShAddSigned clobbers de (its sign-
+    ; extension scratch), so the sy half must run second.
+    ld a, [wSpX]
+    ld l, a
+    ld a, [wSpX+1]
+    ld h, a
+    ld a, [wSiteDX]
+    call ShAddSigned
+    bit 7, h
+    jr nz, .next                     ; wrapped off the west edge
+    ld c, l
+    ld b, h                          ; bc = sx
+    ; sy = base + dy
+    ld a, [wSpX2]
+    ld l, a
+    ld a, [wSpX2+1]
+    ld h, a
+    ld a, [wSiteDY]
+    call ShAddSigned
+    bit 7, h
+    jr nz, .next                     ; wrapped off the north edge
+    ld e, l
+    ld d, h                          ; de = sy
+    push bc
+    push de
+    call ShoreTile
+    call ShoreWalkable
+    pop de
+    pop bc
+    and a
+    jr nz, .found
+.next
+    ld a, [wSiteTry]
+    inc a
+    ld [wSiteTry], a
+    cp 6
+    jp nz, .try
+    xor a
+    ret
+.found
+    ; px center = tile * 8 + 4
+    SL16 b, c, 3
+    ld a, c
+    add 4
+    ld [wSiteX], a
+    ld a, b
+    adc 0
+    ld [wSiteX+1], a
+    SL16 d, e, 3
+    ld a, e
+    add 4
+    ld [wSiteY], a
+    ld a, d
+    adc 0
+    ld [wSiteY+1], a
+    ld a, 1
+    ret
+
+; in: b = cx (0..15), c = cy (0..15), d = slot (0..1)
+; out: a = 0 (no site) or SITE_CHEST/SITE_DEBRIS; wSiteX/wSiteY = px
+; center, wSiteBit = dug-bit index, wSiteLoot = loot byte
+SiteEval:
+    ld a, b
+    ld [wChX], a
+    ld a, c
+    ld [wChY], a
+    ld a, d
+    ld [wSiteSlot], a                ; the slot
+    ; dug-bit index = cell*2 + slot
+    ld a, c
+    swap a                           ; cy*16
+    add b                            ; cell id
+    ld l, a
+    ld h, 0
+    add hl, hl
+    ld e, d
+    ld d, 0
+    add hl, de
+    ld a, l
+    ld [wSiteBit], a
+    ld a, h
+    ld [wSiteBit+1], a
+    ; h1 = Mix16(cell*251 ^ seed16 ^ slot salt)
+    ld a, [wChY]
+    swap a
+    ld hl, wChX
+    add a, [hl]
+    ld b, 251
+    call Mul8                        ; hl = cell*251
+    ld a, [wSeed16]
+    xor h
+    ld h, a
+    ld a, [wSeed16+1]
+    xor l
+    ld l, a
+    ld a, [wSiteSlot]
+    and a
+    jr nz, .slot1
+    ld a, h
+    xor HIGH(SITE_SALT0)
+    ld h, a
+    ld a, l
+    xor LOW(SITE_SALT0)
+    ld l, a
+    jr .mix
+.slot1
+    ld a, h
+    xor HIGH(SITE_SALT1)
+    ld h, a
+    ld a, l
+    xor LOW(SITE_SALT1)
+    ld l, a
+.mix
+    call Mix16                       ; h1
+    ld a, l
+    and 7
+    cp 3
+    jr nc, .none                     ; ~5/8 of slots are empty
+    ld a, h
+    ld [wSiteLoot], a
+    and 1
+    inc a                            ; SITE_CHEST / SITE_DEBRIS
+    ld [wSiteType], a
+    call SitePlace
+    and a
+    jr z, .none
+    ld a, [wSiteType]
+    ret
+.none
+    xor a
+    ret
+
+; in: b = cx, c = cy; out: a = 0 or SITE_GIBBET/SITE_SKULL; wSiteX/wSiteY.
+; Landmarks are rare and never consumed.
+LandmarkEval:
+    ld a, b
+    ld [wChX], a
+    ld a, c
+    ld [wChY], a
+    ld a, c
+    swap a
+    add b
+    ld b, 251
+    call Mul8
+    ld a, [wSeed16]
+    xor h
+    ld h, a
+    ld a, [wSeed16+1]
+    xor l
+    ld l, a
+    ld a, h
+    xor HIGH(LAND_SALT)
+    ld h, a
+    ld a, l
+    xor LOW(LAND_SALT)
+    ld l, a
+    call Mix16                       ; h1
+    ld a, l
+    and 31
+    jr z, .rare                      ; ~3% of cells
+    xor a
+    ret                              ; no landmark: return ZERO (a ret nz
+                                     ; here appended phantoms with stale
+                                     ; site vars for 97% of cells)
+.rare
+    ld a, h
+    and 1
+    add SITE_GIBBET
+    ld [wSiteType], a
+    call SitePlace
+    and a
+    jr z, .none
+    ld a, $FF
+    ld [wSiteBit], a                 ; landmarks have no dug bit
+    ld [wSiteBit+1], a
+    ld a, [wSiteType]
+    ret
+.none
+    xor a
+    ret
+
+; out: a = 1 iff wSiteBit is set in wSiteDug. clobbers a, b, h, l
+SiteDugTest:
+    ld a, [wSiteBit]
+    ld l, a
+    ld a, [wSiteBit+1]
+    ld h, a
+    SR16 h, l, 3
+    ld bc, wSiteDug
+    add hl, bc
+    ld a, [wSiteBit]
+    and 7
+    ld b, 1
+    inc a
+    jr .s
+.m
+    sla b
+.s
+    dec a
+    jr nz, .m
+    ld a, [hl]
+    and b
+    ret z
+    ld a, 1
+    ret
+
+; set wSiteBit in wSiteDug. clobbers a, b, h, l
+SiteDugSet:
+    ld a, [wSiteBit]
+    ld l, a
+    ld a, [wSiteBit+1]
+    ld h, a
+    SR16 h, l, 3
+    ld bc, wSiteDug
+    add hl, bc
+    ld a, [wSiteBit]
+    and 7
+    ld b, 1
+    inc a
+    jr .s
+.m
+    sla b
+.s
+    dec a
+    jr nz, .m
+    ld a, [hl]
+    or b
+    ld [hl], a
+    ret
+
+; append wSiteType/wSiteX/wSiteY/wSiteBit/wSiteLoot as a list entry (cap 6)
+SiteAppend:
+    ld a, [wSiteCount]
+    cp 6
+    ret nc
+    add a
+    add a
+    add a                            ; *8
+    ld e, a
+    ld d, 0
+    ld hl, wSiteList
+    add hl, de
+    ld a, [wSiteType]
+    add TILE_SITE_CHEST - 1          ; sprite tile
+    ld [hli], a
+    ld a, [wSiteX]
+    ld [hli], a
+    ld a, [wSiteX+1]
+    ld [hli], a
+    ld a, [wSiteY]
+    ld [hli], a
+    ld a, [wSiteY+1]
+    ld [hli], a
+    ld a, [wSiteBit]
+    ld [hli], a
+    ld a, [wSiteBit+1]
+    ld [hli], a
+    ld a, [wSiteLoot]
+    ld [hl], a
+    ld hl, wSiteCount
+    inc [hl]
+    ret
+
+; Rebuild the active-site list when the camera's cell changes.
+ShoreSites:
+    ld a, [wShTileX]
+    ld l, a
+    ld a, [wShTileX+1]
+    ld h, a
+    ld b, 40
+    call DivHLb
+    ld hl, wSiteCX0
+    cp [hl]
+    jr nz, .refresh
+    ld a, [wShTileY]
+    ld l, a
+    ld a, [wShTileY+1]
+    ld h, a
+    ld b, 36
+    call DivHLb
+    ld hl, wSiteCY0
+    cp [hl]
+    ret z
+.refresh
+    ld a, [wShTileX]
+    ld l, a
+    ld a, [wShTileX+1]
+    ld h, a
+    ld b, 40
+    call DivHLb
+    ld [wSiteCX0], a
+    ld a, [wShTileY]
+    ld l, a
+    ld a, [wShTileY+1]
+    ld h, a
+    ld b, 36
+    call DivHLb
+    ld [wSiteCY0], a
+    ld hl, wSiteList
+    ld b, 48
+    xor a
+.clr
+    ld [hli], a
+    dec b
+    jr nz, .clr
+    ld [wSiteCount], a
+    ld [wSiteQty], a                 ; cell dy
+.cellY
+    xor a
+    ld [wSiteGood], a                ; cell dx
+.cellX
+    xor a
+    ld [wSiteSlot], a                ; slot
+.slot
+    ld a, [wSiteCX0]
+    ld hl, wSiteGood
+    add a, [hl]
+    ld b, a                          ; cx
+    ld a, [wSiteCY0]
+    ld hl, wSiteQty
+    add a, [hl]
+    ld c, a                          ; cy
+    ld a, [wSiteSlot]
+    ld d, a
+    call SiteEval
+    and a
+    jr z, .nextSlot
+    call SiteDugTest
+    and a
+    jr nz, .nextSlot                 ; dug already
+    call SiteAppend
+.nextSlot
+    ld a, [wSiteSlot]
+    inc a
+    ld [wSiteSlot], a
+    cp 2
+    jr nz, .slot
+    ; landmark, once per cell
+    ld a, [wSiteCX0]
+    ld hl, wSiteGood
+    add a, [hl]
+    ld b, a
+    ld a, [wSiteCY0]
+    ld hl, wSiteQty
+    add a, [hl]
+    ld c, a
+    call LandmarkEval
+    and a
+    jr z, .cellDone
+    call SiteAppend
+.cellDone
+    ld a, [wSiteGood]
+    inc a
+    ld [wSiteGood], a
+    cp 2
+    jr nz, .cellX
+    ld a, [wSiteQty]
+    inc a
+    ld [wSiteQty], a
+    cp 2
+    jr nz, .cellY
+    ret
+
+; Write site sprites into shadow OAM entries 2-7 (hidden when off-screen).
+ShoreSiteSprites:
+    ld hl, wSiteList
+    ld de, wShadowOAM + 8
+    ld b, 6
+.loop
+    push bc
+    ld a, [hli]
+    ld [wSiteType], a
+    ld a, [hli]
+    ld [wSiteX], a
+    ld a, [hli]
+    ld [wSiteX+1], a
+    ld a, [hli]
+    ld [wSiteY], a
+    ld a, [hli]
+    ld [wSiteY+1], a
+    inc hl
+    inc hl
+    inc hl                           ; skip dug-bit index and loot
+    ld a, [wSiteType]
+    and a
+    jr z, .hide
+    ; sx = x - camX (16-bit: sites sit up to a cell off the viewport)
+    ld a, [wSiteX]
+    ld l, a
+    ld a, [wSiteX+1]
+    ld h, a
+    ld a, [wShCamX]
+    ld c, a
+    ld a, [wShCamX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, h
+    and a
+    jr nz, .hide
+    ld a, l
+    add 4
+    cp 169
+    jr nc, .hide
+    ld [wSiteQty], a                 ; screen X
+    ; sy = y - camY
+    ld a, [wSiteY]
+    ld l, a
+    ld a, [wSiteY+1]
+    ld h, a
+    ld a, [wShCamY]
+    ld c, a
+    ld a, [wShCamY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, h
+    and a
+    jr nz, .hide
+    ld a, l
+    add 12
+    cp 160
+    jr nc, .hide
+    ld [de], a                       ; Y
+    inc de
+    ld a, [wSiteQty]
+    ld [de], a                       ; X
+    inc de
+    ld a, [wSiteType]
+    ld [de], a                       ; tile
+    inc de
+    xor a
+    ld [de], a                       ; attr
+    inc de
+    jr .next
+.hide
+    xor a
+    ld [de], a
+    inc de
+    inc de
+    inc de
+    inc de
+.next
+    pop bc
+    dec b
+    jp nz, .loop
+    ret
+
+; ---------------------------------------------------------------------------
+; Site interaction (A pressed ashore) and message screens
+; ---------------------------------------------------------------------------
+
+; out: a = 1 iff the press was consumed (loot or lore)
+TrySite:
+    ld hl, wSiteList
+    ld b, 6
+.loop
+    push bc
+    ld a, [hl]
+    and a
+    jp z, .nextEntry                 ; loot code grew past jr range
+    ; read the whole entry into scratch
+    ld [wSiteType], a
+    inc hl
+    ld a, [hli]
+    ld [wSiteX], a
+    ld a, [hli]
+    ld [wSiteX+1], a
+    ld a, [hli]
+    ld [wSiteY], a
+    ld a, [hli]
+    ld [wSiteY+1], a
+    ld a, [hli]
+    ld [wSiteBit], a
+    ld a, [hli]
+    ld [wSiteBit+1], a
+    ld a, [hl]                       ; loot (hl stays at entry+7)
+    ld [wSiteLoot], a
+    push hl
+    ; chebyshev range to the player, x then y
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    ld a, [wSiteX]
+    ld c, a
+    ld a, [wSiteX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jp nz, .farPop                   ; loot code grew past jr range
+    ld a, l
+    cp 11
+    jp nc, .farPop
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    ld a, [wSiteY]
+    ld c, a
+    ld a, [wSiteY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jp nz, .farPop
+    ld a, l
+    cp 11
+    jp nc, .farPop
+    pop hl                           ; entry cursor (at the loot byte)
+    pop bc                           ; the loop counter is dead: the loot
+                                     ; paths jp out, so balance the stack
+    ld a, [wSiteType]                ; holds the sprite TILE (108 + type)
+    cp TILE_SITE_GIBBET
+    jp nc, .lore
+    ; consumable: remember the entry start for .consume
+    ld de, -7
+    add hl, de
+    ld a, l
+    ld [wSiteCur], a
+    ld a, h
+    ld [wSiteCur+1], a
+    ld a, [wSiteType]
+    cp TILE_SITE_CHEST
+    jp z, .chest
+    ; --- debris: good = (loot>>1)&3, qty = 3 + ((loot>>3)&3) ---
+    ld a, [wSiteLoot]
+    srl a
+    and 3
+    ld [wSiteGood], a
+    ld a, [wSiteLoot]
+    REPT 3
+    srl a
+    ENDR
+    and 3
+    add 3
+    ld [wSiteQty], a
+    ; clamp the lot to hold space
+    ld a, [wCargo]
+    ld hl, wCargo+1
+    add a, [hl]
+    ld hl, wCargo+2
+    add a, [hl]
+    ld hl, wCargo+3
+    add a, [hl]
+    ld b, a
+    ld a, CARGO_MAX
+    sub b
+    jr z, .holdFull
+    ld b, a                          ; space
+    ld a, [wSiteQty]
+    cp b
+    jr c, .qtyOk
+    ld a, b
+.qtyOk
+    ld [wSiteQty], a
+    ld a, [wSiteGood]
+    ld e, a
+    ld d, 0
+    ld hl, wCargo
+    add hl, de
+    ld a, [wSiteQty]
+    add [hl]
+    ld [hl], a
+    call .consume
+    call ShoreMsgBegin
+    ld hl, StrSalvage
+    ld de, $9800 + 8*32 + 2
+    call PrintStr
+    ld a, [wSiteQty]
+    add TILE_HEX0
+    ld [$9800 + 8*32 + 11], a
+    ld a, [wSiteGood]
+    ld hl, GoodNamePtr
+    call FarCall3                    ; hl = ROM0 name string
+    ld de, $9800 + 8*32 + 13
+    call PrintStr
+    jp ShoreMsgEndActed
+.holdFull
+    call ShoreMsgBegin
+    ld hl, StrHoldFull
+    ld de, $9800 + 8*32 + 2
+    call PrintStr
+    jp ShoreMsgEndActed               ; NOT dug: come back with space
+.chest
+    ; amount = 15 + (loot & 31)
+    ld a, [wSiteLoot]
+    and 31
+    add 15
+    ld [wSiteQty], a
+    ld b, a
+    ld hl, AddGold
+    call FarCall3
+    call .consume
+    call ShoreMsgBegin
+    ld hl, StrDigUpGold
+    ld de, $9800 + 8*32 + 1
+    call PrintStr
+    ld a, [wSiteQty]
+    ld de, $9800 + 8*32 + 11
+    call PrintDec2
+    jp ShoreMsgEndActed
+.consume
+    call SiteDugSet
+    ld a, [wSiteCur]
+    ld l, a
+    ld a, [wSiteCur+1]
+    ld h, a
+    xor a
+    ld [hl], a                       ; sprite gone
+    ld a, SFX_COIN
+    ld hl, PlaySfx
+    call FarCall3
+    ret
+.lore
+    cp TILE_SITE_SKULL
+    jr z, .skull
+    ld hl, StrGibbet
+    jr .show
+.skull
+    ld hl, StrSkullPole
+.show
+    push hl
+    call ShoreMsgBegin
+    pop hl
+    ld de, $9800 + 8*32 + 1
+    call PrintStr
+    jp ShoreMsgEndActed
+.farPop
+    pop hl                           ; entry cursor (at the loot byte)
+    inc hl                           ; -> next entry
+    jr .next
+.nextEntry
+    ld de, 8
+    add hl, de
+.next
+    pop bc
+    dec b
+    jp nz, .loop
+    xor a
+    ret
+
+; Message-screen framing: LCD off, blank map (bank-3 helpers via FarCall3).
+ShoreMsgBegin:
+    ld hl, ClearTextScreen
+    call FarCall3
+    ret
+
+; Show the message, wait for any key, rebuild the shore. out: a = 1
+ShoreMsgEndActed:
+    ld hl, ShowTextScreen
+    call FarCall3
+ShoreWaitKey:
+.wait
+    halt
+    ldh a, [hVBlankFlag]             ; count VBlanks, not halts (see Wreck)
+    and a
+    jr z, .wait
+    xor a
+    ldh [hVBlankFlag], a
+    ld hl, UpdateSound
+    call FarCall3                    ; MainLoop is parked: tick music here
+    call ReadJoypad
+    ldh a, [hJoyNew]
+    and a
+    jr z, .wait
+    call LcdOff
+    call ShoreRedrawBody
+    ld a, 1
+    ret
+
+; PUSHS/POPS: a plain SECTION here would dump the rest of the file into
+; ROM0 and split shore mode across banks (silent wrong-bank calls!).
+PUSHS "Shore strings", ROM0
+StrDigUpGold: db "YE DIG UP    GOLD!", 0   ; digits printed at offset 10
+StrSalvage:   db "SALVAGE:", 0
+StrHoldFull:  db "YER HOLD IS FULL", 0
+StrGibbet:    db "A GIBBET SWAYS HERE", 0
+StrSkullPole: db "THE DEAD KEEP WATCH", 0
+POPS
+
+; ---------------------------------------------------------------------------
 ; Sprites / HUD
 ; ---------------------------------------------------------------------------
 
@@ -1540,10 +2343,15 @@ UpdateShore::
     ld a, [wState]
     cp STATE_SHORE
     ret nz                         ; reboarded
+    call TrySite
+    and a
+    ret nz                         ; looted or learned: press consumed
 .noA
     call ShoreMove
     call ShoreCamera
     call ShoreStream
+    call ShoreSites
     call ShoreSprites
+    call ShoreSiteSprites
     call ShoreHud
     ret

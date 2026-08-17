@@ -41,7 +41,7 @@ LoadTiles::
     call CopyVRAM
     ld hl, ShoreSprites
     ld de, $8000 + 104 * 16
-    ld bc, 5 * 16
+    ld bc, 9 * 16
     call CopyVRAM
     ld hl, SkullTile
     ld de, $8000 + 68 * 16
@@ -954,6 +954,42 @@ ShoreSprites:
     dw `03222230
     dw `00333300
     dw `00000000
+; 109 TILE_SITE_CHEST — treasure chest
+    dw `00000000
+    dw `00333300
+    dw `03222230
+    dw `32222223
+    dw `33333333
+    dw `32122123
+    dw `32222223
+    dw `03333330
+; 110 TILE_SITE_DEBRIS — washed-up barrel
+    dw `00000000
+    dw `00333300
+    dw `03222230
+    dw `32122123
+    dw `32222223
+    dw `32122123
+    dw `03222230
+    dw `00333300
+; 111 TILE_SITE_GIBBET — gallows frame
+    dw `00033300
+    dw `00010010
+    dw `00010010
+    dw `00010100
+    dw `00010000
+    dw `00010000
+    dw `00333300
+    dw `00000000
+; 112 TILE_SITE_SKULL — skull on a pole
+    dw `00000000
+    dw `00033000
+    dw `00311300
+    dw `00333000
+    dw `00020000
+    dw `00020000
+    dw `00020000
+    dw `00222200
 
 SECTION "Ball tile", ROMX, BANK[3]
 BallTile:

@@ -1487,6 +1487,8 @@ WordEntry:
     ret
 
 ; hl = 0-terminated string, de = tilemap address. clobbers a, hl, de
+; ROM0: shore mode (bank 4) prints its own strings with it.
+PUSHS "String printing", ROM0
 PrintStr::
     ld a, [hli]
     and a
@@ -1494,6 +1496,7 @@ PrintStr::
     ld [de], a
     inc de
     jr PrintStr
+POPS
 
 ; a = value -> 2 decimal digits at de (leading zero). Values above 99
 ; are clamped: a 3-digit quotient would index past '9' in the font.
@@ -1564,6 +1567,11 @@ PrintDec4::
     ret
 
 ; a / b -> a, remainder in b. clobbers a, b
+; in: a = good index (0..3); out: hl = name string (ROM0). clobbers a, b, c, hl
+GoodNamePtr::
+    ld hl, GOOD_NAMES
+    jp WordEntry
+
 ; a / b -> a (quotient), b = remainder. clobbers a, b, c
 DivA:
     ld c, 0
@@ -1679,10 +1687,14 @@ StrLackGold:  db "YE LACK THE GOLD", 0
 StrEscort:    db "HIS ESCORT SAILS IN!", 0
 StrRobbed:    db "NO QUARTER GIVEN!", 0
 
+; ROM0: shore mode's salvage screen prints good names from bank 4
+; (GOOD_NAMES stays in bank 3; its entries point here).
+PUSHS "Good names", ROM0
 StrRum:     db "RUM", 0
 StrSilk:    db "SILK", 0
 StrSpice:   db "SPICE", 0
 StrCannon:  db "CANNON", 0
+POPS
 
 ; M6: 16 rumors, all <= 20 chars (printed at col 0). Lore: PIRATE_LORE.md.
 RUMORS: dw Rumor0, Rumor1, Rumor2, Rumor3, Rumor4, Rumor5, Rumor6, Rumor7

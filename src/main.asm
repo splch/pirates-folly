@@ -40,8 +40,8 @@ wRngState::    dw
 wIsCGB::       db             ; $11 = CGB/AGB (boot ROM leaves it in a)
 wIsSGB::       db             ; $14 = SGB/SGB2 (boot ROM leaves it in c)
 wIsAGB::       db             ; 1 = AGB (boot ROM leaves b bit 0 set; CGB only)
-wFarA:         db             ; FarCall3/4: arg-a stash across the bank switch
-wFarHL:        dw             ; FarCall3/4: target stash (args ride in registers)
+wFarA::        db             ; FarCall3/4: arg-a stash across the bank switch
+wFarHL::       dw             ; FarCall3/4: target stash (args ride in registers)
 
 SECTION "Volatile WRAM", WRAM0
 ; Per-voyage encounter state, cleared with ONE span loop at boot and in
@@ -561,9 +561,10 @@ WaitVBlankPoll::
     cp 144
     jr c, .waitIn
     ret
-POPS
 
 ; Wait for VBlank, then LCD off. clobbers a
+; ROM0: shore mode (bank 4) turns the LCD off too — an exported bank-3
+; symbol called from bank 4 silently executes the wrong bank's bytes.
 LcdOff::
     call WaitVBlankPoll
     xor a
@@ -579,6 +580,7 @@ LcdOffHome::
     ld a, $E4
     ldh [rBGP], a
     ret
+POPS
 
 ; Fill the whole BG map with TILE_BLANK. LCD must be off.
 ; On CGB also clears the attribute bank (text screens use palette 0).
@@ -709,8 +711,8 @@ InitNewGame:
     ld [hli], a
     dec b
     jr nz, .voyClr
-    ld hl, wExplored             ; + wPortCells (contiguous, 64 B total)
-    ld b, 64
+    ld hl, wExplored             ; + wPortCells + wSiteDug (contiguous)
+    ld b, 128
 .clr
     ld [hli], a
     dec b

@@ -1914,8 +1914,8 @@ def r48_old_save_version_rejected():
     assert wait_state(pb, 2)
     pb.stop()
     ram = bytearray(open(path + ".ram", "rb").read())
-    assert ram[2] == 7 and ram[0x70 + 2] == 7, "expected two v7 slots"
-    ram[2] = ram[0x70 + 2] = 6            # both slots: previous version
+    assert ram[2] == 8 and ram[0xB0 + 2] == 8, "expected two v8 slots"
+    ram[2] = ram[0xB0 + 2] = 7            # both slots: previous version
     open(path + ".ram", "wb").write(ram)
     pb2 = PyBoy(path, window="null")
     pb2.set_emulation_speed(0)

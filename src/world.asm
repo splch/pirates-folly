@@ -66,6 +66,8 @@ wChX::          db
 wChY::          db
 wExplored::     ds 32       ; 16x16-cell fog-of-war bitmap
 wPortCells::    ds 32       ; cells with a docked-at port (chart markers)
+wSiteDug::      ds 64       ; shore-site dug bitmap (bit = cell*2+slot)
+                            ; contiguous with wExplored: cleared together
 wMarkTX::       dw          ; MarkExplored: ship tile last processed
 wMarkTY::       dw          ; ($FFFF = invalid: after boot/spawn jumps)
                             ; NOTE: must stay right after wExplored (cleared together)
@@ -1126,9 +1128,9 @@ DIV18_TAB:
 FOR i, WORLD_H
     db i / 18
 ENDR
-POPS
 
 ; hl /= b -> a (hl destroyed). clobbers a, b, c, hl
+; ROM0: shore mode (bank 4) divides camera cells with it.
 DivHLb::
     ld c, 0
 .loop
@@ -1144,6 +1146,7 @@ DivHLb::
 .done
     ld a, c
     ret
+POPS
 
 PUSHS "Bitmask table", ROMX, BANK[3]
 BITMASKS: db 1, 2, 4, 8, 16, 32, 64, 128

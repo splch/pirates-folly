@@ -197,6 +197,18 @@ Buy the **DINGHY** at any shipyard, and the world's islands open to you.
 * Pirates and storms lose interest while you're ashore. Coward's
   comfort, some say. Take it.
 
+**Treasure ashore.** The islands are not empty, Captain:
+
+* **Buried chests** gleam in the grass — stand close and press **A** to
+  dig up the gold.
+* **Washed-up salvage** (barrels and wreckage) holds cargo for the hold —
+  free goods for the taking, if you have the room.
+* **Grim landmarks** — gibbets and skull-poles left by less fortunate
+  sailors — mark the isles of legend's shores. Read them and remember.
+
+Every dug site stays dug — the Captain's Log remembers what you've taken.
+The same island never hides the same chest twice in one voyage.
+
 ---
 
 ## MERCHANTS OF THE MAIN

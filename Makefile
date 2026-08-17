@@ -32,6 +32,7 @@ clean:
 check: pirates_folly.gb
 	for t in tests/test_*.py; do echo "== $$t"; python3 "$$t" || exit 1; done
 	python3 tests/lint_worlds.py
+	python3 tests/lint_banks.py
 
 .PHONY: clean check
 

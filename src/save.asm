@@ -8,8 +8,8 @@ INCLUDE "defs.inc"
 
 DEF SAVE_MAGIC_0 EQU $53
 DEF SAVE_MAGIC_1 EQU $46
-DEF SAVE_VERSION EQU 7          ; v7: + wHasDinghy in the upgrades block. v6 rejected.
-                                ; (v6: two rotating slots + sequence byte)
+DEF SAVE_VERSION EQU 8          ; v8: + wSiteDug (shore-site dug bitmap). v7 rejected.
+                                ; (v7: + wHasDinghy; v6: two rotating slots + seq byte)
 
 ; Record layout (offsets into a slot)
     RSRESET
@@ -29,14 +29,15 @@ DEF SAVE_F_PORTCELLS RB 32      ; wPortCells
 DEF SAVE_F_BESTGOLD  RB 2       ; wBestGold
 DEF SAVE_F_CARTDONE  RB 1       ; wCartDone
 DEF SAVE_F_UPGRADES  RB 4       ; wHullMax/wMaxVel/wBallLife/wHasDinghy (contiguous)
+DEF SAVE_F_SITEDUG   RB 64      ; wSiteDug (shore-site dug bitmap)
 DEF SAVE_REC_SIZE    RB 0
 
 DEF SAVE_DATA_START EQU SAVE_F_SEED
 DEF SAVE_DATA_LEN   EQU SAVE_REC_SIZE - SAVE_F_SEED
-DEF SAVE_SLOT1      EQU $A070   ; slot 0 is $A000; $70 stride >= record size
+DEF SAVE_SLOT1      EQU $A0B0   ; slot 0 is $A000; $B0 stride >= record size
 
-STATIC_ASSERT SAVE_REC_SIZE == 100
-STATIC_ASSERT SAVE_DATA_LEN == 95
+STATIC_ASSERT SAVE_REC_SIZE == 164
+STATIC_ASSERT SAVE_DATA_LEN == 159
 
 SECTION "Save WRAM", WRAM0
 wSaveSlot:: db          ; which slot the next SaveGame writes (0/1)
@@ -131,7 +132,10 @@ SaveGame::
     ld b, SAVE_F_UPGRADES - SAVE_F_CARTDONE
     call CopyToSRAM
     ld de, wHullMax                ; 4 contiguous upgrade bytes
-    ld b, SAVE_REC_SIZE - SAVE_F_UPGRADES
+    ld b, SAVE_F_SITEDUG - SAVE_F_UPGRADES
+    call CopyToSRAM
+    ld de, wSiteDug
+    ld b, SAVE_REC_SIZE - SAVE_F_SITEDUG
     call CopyToSRAM
     ; checksum = sum of the data bytes at slot base + SAVE_DATA_START
     pop de                         ; slot base
@@ -283,7 +287,10 @@ LoadGame::
     ld b, SAVE_F_UPGRADES - SAVE_F_CARTDONE
     call CopyFromSRAM
     ld de, wHullMax
-    ld b, SAVE_REC_SIZE - SAVE_F_UPGRADES
+    ld b, SAVE_F_SITEDUG - SAVE_F_UPGRADES
+    call CopyFromSRAM
+    ld de, wSiteDug
+    ld b, SAVE_REC_SIZE - SAVE_F_SITEDUG
     call CopyFromSRAM
     call FoldSeed16                ; wSeed16 first: ComputeIsles hashes with it
     call ComputeIsles              ; isles are derived, never saved
