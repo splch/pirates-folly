@@ -269,7 +269,7 @@ SailVBlank::
     call HudVBlank
     ret
 
-; Swap the two water tiles' graphics every 16 frames.
+; Cycle the four water phases every 16 frames (64-frame drift loop).
 ; ROM0: shore mode shows the same animated sea.
 PUSHS "Water animation", ROM0
 AnimWater::
@@ -277,14 +277,16 @@ AnimWater::
     and $0F
     ret nz
     ld a, [wAnimPhase]
-    xor 1
+    inc a
+    and 3
     ld [wAnimPhase], a
+    swap a                         ; phase << 4
+    ld c, a
+    ld b, 0
+    sla c
+    rl b                           ; bc = phase * 32
     ld hl, WaterFrames
-    and a
-    jr z, .copy
-    ld bc, 32
     add hl, bc
-.copy
     ld de, $8000 + 16              ; tiles 1 (deep) and 2 (shallow)
     ld bc, 32
     call CopyVRAM

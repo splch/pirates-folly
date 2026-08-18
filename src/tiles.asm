@@ -198,46 +198,82 @@ CGB_OBP:
     dw $7FFF, $5294, $0850, $0000  ; obj1 pirate: white/gray/dark red/black
 POPS
 
-; 2-frame water animation: [deepA][shallowA][deepB][shallowB], 16 bytes each.
+; 4-phase water animation: [deep][shallow] per phase, 16 bytes each.
 ; SailVBlank copies one 32-byte pair over tiles 1-2 every 16 frames.
+; Every row is 4-periodic (abcdabcd), so drifting right one pixel per
+; phase loops exactly (rotation == shift across tile boundaries).
 ; ROM0: AnimWater (also ROM0) reads it for both sailing and shore mode.
 PUSHS "Water anim data", ROM0
 WaterFrames::
-    ; phase A: deep — 3 staggered wavelets
+    ; --- phase 0 ---
+    ; deep
     dw `00000000
-    dw `00110000
-    dw `00000000
-    dw `00000000
-    dw `00000110
-    dw `00000000
-    dw `00011000
-    dw `00000000
-    ; phase A: shallow — deep + extra glints
-    dw `00010000
-    dw `00110000
-    dw `00000000
-    dw `00000010
-    dw `00000110
-    dw `01000000
-    dw `00011000
-    dw `00000000
-    ; phase B: deep — wavelets drifted one pixel right
-    dw `00000000
-    dw `00011000
+    dw `00110011
     dw `00000000
     dw `00000000
-    dw `00000011
+    dw `01100110
     dw `00000000
-    dw `00001100
     dw `00000000
-    ; phase B: shallow — drifted with it
-    dw `00001000
-    dw `00011000
     dw `00000000
-    dw `00000001
-    dw `00000011
-    dw `00100000
-    dw `00001100
+    ; shallow
+    dw `00100010
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    dw `00010001
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    ; --- phase 1 (drifted right 1 px) ---
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    dw `00000000
+    dw `00110011
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00010001
+    dw `00000000
+    dw `00110011
+    dw `00000000
+    dw `10001000
+    dw `00000000
+    dw `00110011
+    dw `00000000
+    ; --- phase 2 ---
+    dw `00000000
+    dw `11001100
+    dw `00000000
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `10001000
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    dw `01000100
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    ; --- phase 3 ---
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    dw `00000000
+    dw `11001100
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `01000100
+    dw `00000000
+    dw `11001100
+    dw `00000000
+    dw `00100010
+    dw `00000000
+    dw `11001100
     dw `00000000
 POPS
 
@@ -637,23 +673,23 @@ TerrainTiles:
     dw `00000000
     dw `00000000
     dw `00000000
-; 1 TILE_DEEP — open water: 3 staggered wavelets, calm (WaterFrames A)
+; 1 TILE_DEEP — open water: sparse 4-periodic wavelets (WaterFrames phase 0)
     dw `00000000
-    dw `00110000
+    dw `00110011
     dw `00000000
     dw `00000000
-    dw `00000110
+    dw `01100110
     dw `00000000
-    dw `00011000
     dw `00000000
-; 2 TILE_SHALLOW — deep pattern + extra glints: visibly busier (WaterFrames A)
-    dw `00010000
-    dw `00110000
     dw `00000000
-    dw `00000010
-    dw `00000110
-    dw `01000000
-    dw `00011000
+; 2 TILE_SHALLOW — wavelets + glints: visibly busier (WaterFrames phase 0)
+    dw `00100010
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    dw `00010001
+    dw `00000000
+    dw `01100110
     dw `00000000
 ; 3 TILE_SAND — clustered grain with shell flecks
     dw `11111111
