@@ -58,6 +58,9 @@ then flash it to a cartridge or open it in any Game Boy emulator
   Snakes and skeletons guard the islands: press **B** for the pistol, and
   watch your hearts — at zero, the island takes a toll in gold and drags
   you back to the dinghy. Walk back to the dinghy and press **A** to reboard.
+- **Walk into town.** Port districts are real settlements ashore: find the
+  tavern, market, shipyard, and harbor house, and step up to one to use
+  it — the same port screens, reached on foot. B backs out to the street.
 - **Win, and keep sailing.** The Treasure's curse: after victory, charted
   waters roll encounters at full rate — a won sea never calms.
 - **Digging.** An isle's fragment only comes out of the ground once its

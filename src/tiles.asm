@@ -41,7 +41,7 @@ LoadTiles::
     call CopyVRAM
     ld hl, ShoreSprites
     ld de, $8000 + 104 * 16
-    ld bc, 13 * 16
+    ld bc, 17 * 16
     call CopyVRAM
     ld hl, SkullTile
     ld de, $8000 + 68 * 16
@@ -1025,6 +1025,42 @@ ShoreSprites:
     dw `03222230
     dw `00322300
     dw `00033000
+    dw `00000000
+; 117 TILE_TAVERN — a foaming mug
+    dw `00000000
+    dw `00333300
+    dw `03222230
+    dw `03222233
+    dw `03222230
+    dw `03222230
+    dw `00333300
+    dw `00000000
+; 118 TILE_MARKET — a stack of coin
+    dw `00000000
+    dw `00033000
+    dw `00322300
+    dw `03222230
+    dw `00033000
+    dw `00322300
+    dw `03222230
+    dw `00000000
+; 119 TILE_SHIPYARD — an anchor
+    dw `00030000
+    dw `00333000
+    dw `00030000
+    dw `03333330
+    dw `03030030
+    dw `03030030
+    dw `00333000
+    dw `00000000
+; 120 TILE_HARBOR — the harbor bell
+    dw `00030000
+    dw `00333000
+    dw `03222230
+    dw `03222230
+    dw `03222230
+    dw `03333330
+    dw `00030000
     dw `00000000
 
 SECTION "Ball tile", ROMX, BANK[3]

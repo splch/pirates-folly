@@ -158,6 +158,29 @@ def foe_eval(cx, cy, slot, s16):
         return (2, 2, 2 + ((h1 >> 8) & 7), sx, sy)
     return (1, 1, 0, sx, sy)           # meadow -> snake
 
+# --- S4: port towns (mirror of BldgSpawn in shore.asm) ---
+def town_buildings(dx, dy, s16):
+    """-> list of 4 (tavern, market, shipyard, harbor) tile positions or
+    None for skipped buildings."""
+    out = []
+    for svc in range(4):
+        h1 = mix16(district_hash(dx, dy, s16) ^ 0xB17E ^ svc)
+        h2 = mix16(h1 ^ 0x5A3C)
+        bx, by = dx * 8 + (h2 & 7), dy * 8 + ((h2 >> 4) & 7)
+        placed = None
+        for ox, oy in SITE_TRY:
+            sx, sy = bx + ox, by + oy
+            if sx < 0 or sy < 0:
+                continue
+            if not shore_walkable(shore_tile(sx, sy, s16)):
+                continue
+            if (sx, sy) in (p for p in out if p):
+                continue
+            placed = (sx, sy)
+            break
+        out.append(placed)
+    return out
+
 def find_landing(s16, tx, ty):
     """Mirror of shore.asm TryLand: ship at water tile (tx,ty); scan the
     N/S/W/E neighbor ocean tiles for land, then the 4 sub-tiles in order;
@@ -608,6 +631,94 @@ assert mem[syms["wShHearts"]] == 3, "hearts not restored"
 assert (w16(mem, "wShPosX"), w16(mem, "wShPosY")) == \
     (w16(mem, "wDingX"), w16(mem, "wDingY")), "didn't wake at the dinghy"
 print("collapse: toll paid, wake at the dinghy, hearts restored: OK")
+
+# --- S4: port towns — walk in, use the services, walk out ---
+# find a port district where all four buildings could be placed
+ptown = None
+for dy in range(72):
+    for dx in range(80):
+        if not has_port(dx, dy, s16):
+            continue
+        b = town_buildings(dx, dy, s16)
+        if all(b):
+            ptown = (dx, dy, b)
+            break
+    if ptown:
+        break
+assert ptown, "no fully-placed port town on this sea"
+pdx, pdy, buildings = ptown
+print(f"port town district ({pdx},{pdy})")
+# walk into town (teleport near the district center; rebuild runs)
+go_to(mem, (pdx * 8 + 4) * 8, (pdy * 8 + 4) * 8)
+for _ in range(30):
+    pb.tick()
+for svc in range(4):
+    ent = syms["wBldgList"] + svc * 8
+    assert mem[ent] != 0, f"building {svc} didn't spawn"
+    gx = mem[ent + 1] | mem[ent + 2] << 8
+    gy = mem[ent + 3] | mem[ent + 4] << 8
+    wx, wy = buildings[svc][0] * 8 + 4, buildings[svc][1] * 8 + 4
+    assert (gx, gy) == (wx, wy), \
+        f"building {svc} at ({gx},{gy}), want ({wx},{wy})"
+print("town spawned: all four buildings placed as modeled: OK")
+
+def enter_building(svc):
+    ent = syms["wBldgList"] + svc * 8
+    gx = mem[ent + 1] | mem[ent + 2] << 8
+    gy = mem[ent + 3] | mem[ent + 4] << 8
+    go_to(mem, gx, gy)
+    for _ in range(10):
+        pb.tick()
+    press3(pb, "a")
+    for _ in range(15):
+        pb.tick()
+
+# tavern: opens PTAVERN directly; B backs to the town menu; B again to shore
+enter_building(0)
+assert mem[syms["wState"]] == 4 and mem[syms["wPortState"]] == 2, \
+    f"tavern opened state {mem[syms['wState']]}/{mem[syms['wPortState']]}"
+assert row8_has_text(mem), "tavern screen is blank"
+press3(pb, "b")
+for _ in range(10):
+    pb.tick()
+assert mem[syms["wPortState"]] == 0, "B didn't back out to the town menu"
+press3(pb, "b")
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 9, \
+    f"B at the town menu should return ashore (state {mem[syms['wState']]})"
+print("tavern: opens, B-back returns to town: OK")
+
+# market: opens PTRADE
+enter_building(1)
+assert mem[syms["wPortState"]] == 1, "market didn't open the trade screen"
+press3(pb, "b")
+for _ in range(10):
+    pb.tick()
+press3(pb, "b")
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 9, "market didn't return to town"
+print("market: opens, B-back returns to town: OK")
+
+# harbor: opens the main menu; SET SAIL goes back to the ship
+enter_building(3)
+assert mem[syms["wPortState"]] == 0, "harbor didn't open the main menu"
+for _ in range(6):
+    press3(pb, "down")
+    for _ in range(3):
+        pb.tick()
+press3(pb, "a")                      # SET SAIL
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 2, \
+    f"SET SAIL should return to the ship (state {mem[syms['wState']]})"
+print("harbor: main menu, SET SAIL to the ship: OK")
+# land again for the reboard/save phases (the ship is at the beach)
+press3(pb, "a")
+for _ in range(60):
+    pb.tick()
+assert mem[syms["wState"]] == 9, "didn't land again after SET SAIL"
 
 # reboard: stand on the dinghy, press A. A press landing inside a screen
 # rebuild vanishes, and one can wake a stale message instead — retry.

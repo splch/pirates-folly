@@ -9,11 +9,12 @@ SECTION "Port WRAM", WRAM0
 wPortState: db          ; PMAIN/PTRADE/PTAVERN/PREPAIR/PRECRUIT/PSAVED
 wPortMenu:  db          ; cursor index
 wPortDirty: db          ; 1 = full re-render, 2 = cursor moved
-wPortDX:    db          ; current port district
-wPortDY:    db
+wPortDX::   db          ; current port district
+wPortDY::   db
+wPortReturn:: db        ; STATE_SHORE when entered from a town building
 wBeachX::   dw          ; land-neighbor tile coords during TryDock
 wBeachY::   dw
-wPortHash:  dw          ; district hash (drives name/prices/rumor)
+wPortHash:: dw          ; district hash (drives name/prices/rumor)
 wTradeSel:  db
 wPortK:     db
 wPriceTmp:  db
@@ -156,6 +157,8 @@ TryDock::
     ld [wPortHash], a
     ld a, l
     ld [wPortHash+1], a
+    xor a
+    ld [wPortReturn], a            ; docked from the sea
     call SaveGame                  ; autosave on dock
     ld a, SFX_BELL
     call PlaySfx                   ; harbor bell
@@ -468,6 +471,27 @@ ComputeDirection:
     xor a                          ; N
 .setDir
     ld [wNpDir], a
+    ret
+
+; Enter the port UI from a town building (shore side). The caller sets
+; wPortDX/DY and wPortHash for the district and wPortReturn = STATE_SHORE.
+; in: a = sub-state (PTRADE/PTAVERN/PSHIPYARD/PMAIN)
+EnterPortFromShore::
+    ld [wPortState], a
+    xor a
+    ld [wPortMenu], a
+    ld a, 1
+    ld [wPortDirty], a
+    call LcdOffHome
+    call ClearOAM
+    call RenderPort
+    call ShowTextScreen
+    ld a, SFX_BELL
+    call PlaySfx
+    ld a, SONG_PORT
+    call SetSong
+    ld a, STATE_PORT
+    ld [wState], a
     ret
 
 ; ---------------------------------------------------------------------------
@@ -962,11 +986,24 @@ MainInput:
     ldh a, [hJoyNew]
     and PADF_B
     jr z, .notB
-    ; set sail
+    ; back out: docked -> set sail; town building -> back to the town
+    ld a, [wPortReturn]
+    cp STATE_SHORE
+    jr z, .toTown
     call SaveGame
     call UpdateSailMusic           ; storm may still be blowing outside
     call SailRedraw
     ld a, STATE_SAIL
+    ld [wState], a
+    ret
+.toTown
+    xor a
+    ld [wPortReturn], a
+    ld hl, ShoreRedrawBody
+    call FarCall4
+    ld a, SONG_SAIL
+    call SetSong                   ; calm seas (and shores)
+    ld a, STATE_SHORE
     ld [wState], a
     ret
 .notB

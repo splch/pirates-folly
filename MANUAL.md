@@ -223,6 +223,18 @@ The same island never hides the same chest twice in one voyage.
 * Foes you leave behind slip back to their lairs — cross far enough
   inland and the island restocks behind you.
 
+**Port towns.** Behind the dock planks, every port district is a little
+settlement. Walk inland from the beach and you'll find four houses:
+
+* the **TAVERN** (a foaming mug) — gossip and bearings, same as the bar,
+* the **MARKET** (a stack of coin) — buy low, sell high,
+* the **SHIPYARD** (an anchor) — refits, plating, and the dinghy herself,
+* the **HARBOR** house (a bell) — repair, recruit, save, or set sail.
+
+Stand before a door and press **A** to step in. The same counters you
+know from docking — just reached on foot. Press **B** to step back out
+to the street.
+
 ---
 
 ## MERCHANTS OF THE MAIN

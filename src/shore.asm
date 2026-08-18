@@ -70,6 +70,13 @@ wCoinVal:    db
 wSprSX:      dw             ; ShWriteSprite staging
 wSprSY:      dw
 
+; Port towns (S4). Building list entry, 8 bytes: sprite tile (0 = none),
+; x px (dw), y px (dw), service, 3 spare.
+wBldgList:   ds 32          ; 4 entries x 8
+wBldgDX:     db             ; district of the current town ($FF = none)
+wBldgDY:     db
+wBldgSvc:    db             ; TryBuilding scratch
+
 SECTION "Shore", ROMX, BANK[4]
 
 ; ---------------------------------------------------------------------------
@@ -904,6 +911,8 @@ GoAshore:
     ld [wCoinVal], a
     ld [wFoeList], a               ; no foes until the first refresh
     ld [wFoeList + 8], a
+    dec a
+    ld [wBldgDX], a                ; $FF: force a town rebuild
     call ShoreCamera
     call ShoreRedrawBody
     ld a, SFX_SPLASH
@@ -3356,6 +3365,441 @@ ShoreHud:
     ld [de], a
     ret
 
+; ---------------------------------------------------------------------------
+; Port towns (S4): buildings in port districts open the port screens
+; ---------------------------------------------------------------------------
+
+; in: b = dx, c = dy; out: hl = DistrictHash. Same math as port.asm's,
+; via ROM0's Mul8 (bank 4 can't call the bank-3 version).
+ShDistrictHash:
+    push bc
+    ld a, b
+    ld b, 37
+    call Mul8                        ; hl = dx*37
+    pop bc
+    push hl
+    ld a, c
+    ld b, 91
+    call Mul8                        ; hl = dy*91
+    pop de
+    add hl, de
+    ld a, [wSeed16]
+    xor h
+    ld h, a
+    ld a, [wSeed16+1]
+    xor l
+    ld l, a
+    ld a, h
+    xor HIGH(PORT_SALT)
+    ld h, a
+    ld a, l
+    xor LOW(PORT_SALT)
+    ld l, a
+    call Mix16
+    ret
+
+; in: b = dx, c = dy; out: a = 1 iff port district
+ShHasPort:
+    call ShDistrictHash
+    ld a, l
+    and $3F
+    cp 12
+    ld a, 0
+    ret nc
+    inc a
+    ret
+
+; in: bc/de = candidate tile; out: a = 1 iff no earlier building sits there
+BldgDistinct:
+    ld a, [wSiteType]                ; earlier buildings: 0..s-1
+    and a
+    jr nz, .check
+    ld a, 1                          ; first building: always distinct
+    ret                              ; (a plain ret z returned 0 = collision
+                                     ;  and the tavern never spawned)
+.check
+    ld [wSiteQty], a                 ; count of earlier buildings
+    ld hl, wBldgList + 1             ; x lo of entry 0
+.loop
+    ld a, [hli]                      ; x lo
+    ld [wSprSX], a
+    ld a, [hli]                      ; x hi
+    ld [wSprSX+1], a
+    ld a, [hli]                      ; y lo
+    ld [wSprSY], a
+    ld a, [hli]                      ; y hi
+    ld [wSprSY+1], a
+    inc hl
+    inc hl
+    inc hl
+    inc hl                           ; -> next entry
+    push hl
+    ; compare TILES: candidate (bc, de) vs the entry's tile
+    ld a, [wSprSX]
+    ld l, a
+    ld a, [wSprSX+1]
+    ld h, a
+    SR16 h, l, 3                     ; entry tile x
+    ld a, l
+    cp c
+    jr nz, .ok
+    ld a, [wSprSY]
+    ld l, a
+    ld a, [wSprSY+1]
+    ld h, a
+    SR16 h, l, 3
+    ld a, l
+    cp e
+    jr nz, .ok
+    pop hl
+    xor a                            ; same tile: collision
+    ret
+.ok
+    pop hl
+    ld a, [wSiteQty]
+    dec a
+    ld [wSiteQty], a
+    jr nz, .loop
+    ld a, 1
+    ret
+
+; Spawn service d's building for district (b = dx, c = dy), if its hashed
+; spot (or a nudge) is walkable and distinct from earlier buildings.
+BldgSpawn:
+    ld a, b
+    ld [wChX], a
+    ld a, c
+    ld [wChY], a
+    ld a, d
+    ld [wSiteType], a                ; the service
+    call ShDistrictHash              ; hl = DistrictHash(dx, dy)
+    ld a, h
+    xor HIGH(BLDG_SALT)
+    ld h, a
+    ld a, l
+    xor LOW(BLDG_SALT)
+    ld l, a
+    ld a, [wSiteType]
+    xor l                            ; mix in the service
+    ld l, a
+    call Mix16                       ; h1
+    ld a, h
+    xor HIGH(SITE_SALT2)
+    ld h, a
+    ld a, l
+    xor LOW(SITE_SALT2)
+    ld l, a
+    call Mix16                       ; h2
+    ; ox = h2 & 7, oy = (h2>>4) & 7 (within the district's 8x8 tiles)
+    ld a, l
+    and 7
+    ld [wSpX], a
+    xor a
+    ld [wSpX+1], a
+    SR16 h, l, 4
+    ld a, l
+    and 7
+    ld [wSpX2], a
+    xor a
+    ld [wSpX2+1], a
+    ; base tile = (dx*8 + ox, dy*8 + oy)
+    ld a, [wChX]
+    REPT 3
+    add a, a
+    ENDR
+    ld hl, wSpX
+    add a, [hl]
+    ld [wSpX], a
+    ld a, [wChY]
+    REPT 3
+    add a, a
+    ENDR
+    ld hl, wSpX2
+    add a, [hl]
+    ld [wSpX2], a
+    xor a
+    ld [wSiteTry], a
+.try
+    ld a, [wSiteTry]
+    add a
+    ld hl, SITE_TRY
+    ld e, a
+    ld d, 0
+    add hl, de
+    ld a, [hli]
+    ld [wSiteDX], a                  ; dx offset (signed)
+    ld a, [hl]
+    ld [wSiteDY], a                  ; dy offset (signed)
+    ; candidate tile
+    ld a, [wSpX]
+    ld l, a
+    ld a, [wSpX+1]
+    ld h, a
+    ld a, [wSiteDX]
+    call ShAddSigned
+    bit 7, h
+    jp nz, .next                     ; the distinctness check grew past jr range
+    ld c, l
+    ld b, h                          ; bc = sx (tile)
+    ld a, [wSpX2]
+    ld l, a
+    ld a, [wSpX2+1]
+    ld h, a
+    ld a, [wSiteDY]
+    call ShAddSigned
+    bit 7, h
+    jr nz, .next
+    ld e, l
+    ld d, h                          ; de = sy (tile)
+    push bc
+    push de
+    call ShoreTile
+    call ShoreWalkable
+    pop de
+    pop bc
+    and a
+    jr z, .next
+    push bc
+    push de
+    call BldgDistinct
+    pop de
+    pop bc
+    and a
+    jr z, .next
+    ; px center
+    SL16 b, c, 3
+    ld a, c
+    add 4
+    ld [wSiteX], a
+    ld a, b
+    adc 0
+    ld [wSiteX+1], a
+    SL16 d, e, 3
+    ld a, e
+    add 4
+    ld [wSiteY], a
+    ld a, d
+    adc 0
+    ld [wSiteY+1], a
+    ; append the building (slot = service * 8)
+    ld a, [wSiteType]
+    add a
+    add a
+    add a
+    ld e, a
+    ld d, 0
+    ld hl, wBldgList
+    add hl, de
+    ld a, [wSiteType]
+    add TILE_TAVERN
+    ld [hli], a
+    ld a, [wSiteX]
+    ld [hli], a
+    ld a, [wSiteX+1]
+    ld [hli], a
+    ld a, [wSiteY]
+    ld [hli], a
+    ld a, [wSiteY+1]
+    ld [hli], a
+    ld a, [wSiteType]
+    ld [hl], a                       ; service byte
+    ret
+.next
+    ld a, [wSiteTry]
+    inc a
+    ld [wSiteTry], a
+    cp SITE_TRIES
+    jp nz, .try                      ; the distinctness check grew past jr range
+    ret                              ; no spot found: skip the building
+
+; Rebuild the town when the player's district changes.
+BldgRefresh:
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    SR16 h, l, 6                     ; px >> 6 = district
+    ld a, l
+    ld hl, wBldgDX
+    cp [hl]
+    jr nz, .rebuild
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    SR16 h, l, 6
+    ld a, l
+    ld hl, wBldgDY
+    cp [hl]
+    ret z
+.rebuild
+    ld hl, wBldgList
+    ld b, 32
+    xor a
+.clr
+    ld [hli], a
+    dec b
+    jr nz, .clr
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    SR16 h, l, 6
+    ld a, l
+    ld [wBldgDX], a
+    ld b, a
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    SR16 h, l, 6
+    ld a, l
+    ld [wBldgDY], a
+    ld c, a
+    call ShHasPort
+    and a
+    ret z                            ; not a port district: no town
+    xor a
+    ld [wSiteSlot], a                ; service index
+.svc
+    ld a, [wBldgDX]
+    ld b, a
+    ld a, [wBldgDY]
+    ld c, a
+    ld a, [wSiteSlot]
+    ld d, a
+    call BldgSpawn
+    ld a, [wSiteSlot]
+    inc a
+    ld [wSiteSlot], a
+    cp 4
+    jr nz, .svc
+    ret
+
+; A beside a building: open its port screen. out: a = 1 iff consumed.
+TryBuilding:
+    ld hl, wBldgList
+    ld b, 4
+.loop
+    push bc
+    ld a, [hl]
+    and a
+    jp z, .next                      ; entry loop grew past jr range
+    ; read the entry
+    inc hl
+    ld a, [hli]
+    ld [wSiteX], a
+    ld a, [hli]
+    ld [wSiteX+1], a
+    ld a, [hli]
+    ld [wSiteY], a
+    ld a, [hli]
+    ld [wSiteY+1], a
+    ld a, [hl]                       ; service
+    ld [wBldgSvc], a
+    push hl
+    ; chebyshev vs player, x then y
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    ld a, [wSiteX]
+    ld c, a
+    ld a, [wSiteX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jr nz, .far
+    ld a, l
+    cp 11
+    jr nc, .far
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    ld a, [wSiteY]
+    ld c, a
+    ld a, [wSiteY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jr nz, .far
+    ld a, l
+    cp 11
+    jr nc, .far
+    pop hl
+    pop bc
+    ; open the service
+    ld a, [wBldgDX]
+    ld [wPortDX], a
+    ld a, [wBldgDY]
+    ld [wPortDY], a
+    ld a, [wBldgDX]
+    ld b, a
+    ld a, [wBldgDY]
+    ld c, a
+    call ShDistrictHash
+    ld a, h
+    ld [wPortHash], a
+    ld a, l
+    ld [wPortHash+1], a
+    ld a, STATE_SHORE
+    ld [wPortReturn], a
+    ld a, [wBldgSvc]
+    and a
+    jr z, .tavern
+    dec a
+    jr z, .market
+    dec a
+    jr z, .shipyard
+    xor a                            ; harbor -> the port main menu
+    jr .enter
+.tavern
+    ld a, PTAVERN
+    jr .enter
+.market
+    ld a, PTRADE
+    jr .enter
+.shipyard
+    ld a, PSHIPYARD
+.enter
+    ld hl, EnterPortFromShore
+    call FarCall3
+    ld a, 1
+    ret
+.far
+    pop hl                           ; at +5 (the service byte)
+    inc hl
+    inc hl
+    inc hl                           ; -> next entry
+    pop bc
+    dec b
+    jp nz, .loop
+    xor a
+    ret
+.next
+    pop bc
+    ld de, 8
+    add hl, de
+    dec b
+    jp nz, .loop
+    xor a
+    ret
+
 ; Write/hide one OAM entry at de for a world-px position at [hl]
 ; (x dw, y dw); b = sprite tile (0 = hide). clobbers a, c, h, l
 ShWriteSprite:
@@ -3470,6 +3914,28 @@ ShoreFoeSprites:
     call ShWriteSprite
     ret
 
+; Town buildings into OAM entries 12-15.
+ShoreBldgSprites:
+    ld hl, wBldgList
+    ld de, wShadowOAM + 48
+    ld b, 4
+.loop
+    push bc
+    ld a, [hl]                       ; tile (0 = no building)
+    ld b, a
+    inc hl                           ; &x
+    call ShWriteSprite
+    pop bc
+    ld a, l                          ; hl is at +4 (ShWriteSprite read 4);
+    add 4                            ; step the spare/service bytes too
+    ld l, a
+    ld a, h
+    adc 0
+    ld h, a
+    dec b
+    jr nz, .loop
+    ret
+
 ; ---------------------------------------------------------------------------
 ; Per-frame entry points
 ; ---------------------------------------------------------------------------
@@ -3519,6 +3985,9 @@ UpdateShore::
     call TrySite                   ; a site under your boots wins the press
     and a
     ret nz                         ; looted or learned: press consumed
+    call TryBuilding               ; a town building: into its port screen
+    and a
+    ret nz
     call TryReboard                ; else: beside the dinghy -> back aboard
     ret
 .noA
@@ -3531,11 +4000,13 @@ UpdateShore::
     call ShoreCamera
     call ShoreStream
     call ShoreSites
+    call BldgRefresh
     call UpdateFoes
     call UpdateBallSh
     call UpdateCoin
     call ShoreSprites
     call ShoreSiteSprites
     call ShoreFoeSprites
+    call ShoreBldgSprites
     call ShoreHud
     ret

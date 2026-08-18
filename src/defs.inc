@@ -106,6 +106,19 @@ DEF TILE_DIGX        EQU 113    ; dig site: X marks the spot
 DEF TILE_SNAKE       EQU 114    ; shore foes (S3)
 DEF TILE_SKEL        EQU 115
 DEF TILE_COIN        EQU 116    ; dropped by slain skeletons
+DEF TILE_TAVERN      EQU 117    ; port-town buildings (S4)
+DEF TILE_MARKET      EQU 118
+DEF TILE_SHIPYARD    EQU 119
+DEF TILE_HARBOR      EQU 120
+
+; --- Port towns (S4) ---
+; In a port district, four buildings spawn at hashed spots: tavern,
+; market, shipyard, harbor. Each opens the matching port screen.
+DEF BLDG_TAVERN  EQU 0
+DEF BLDG_MARKET  EQU 1
+DEF BLDG_SHIPYARD EQU 2
+DEF BLDG_HARBOR  EQU 3
+DEF BLDG_SALT    EQU $B17E
 
 ; --- Shore sites (hash-placed loot & lore landmarks) ---
 ; Two consumable slots per chart cell (dug bitmap: bit = cell*2+slot);
