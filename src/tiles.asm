@@ -492,42 +492,43 @@ PortTiles:
     dw `00000000
 
 ; 8x8 ship, one tile per heading: N, E, S, W (tiles 8-11)
+; light sail (1), deck (2), hull outline (3)
 ShipTiles:
     ; N
+    dw `00003000
+    dw `00031300
+    dw `00311130
+    dw `00311130
+    dw `00322230
+    dw `00322230
     dw `00033000
-    dw `00322300
-    dw `03211230
-    dw `03211230
-    dw `03211230
-    dw `03222230
-    dw `00322300
-    dw `00033000
+    dw `00000000
     ; E
     dw `00000000
-    dw `00033000
-    dw `03322330
-    dw `03122133
-    dw `03122133
-    dw `03322330
-    dw `00033000
+    dw `00333300
+    dw `03112230
+    dw `03112230
+    dw `03112230
+    dw `00333300
+    dw `00000000
     dw `00000000
     ; S
-    dw `00033000
-    dw `00322300
-    dw `03222230
-    dw `03211230
-    dw `03211230
-    dw `03211230
-    dw `00322300
-    dw `00033000
-    ; W
     dw `00000000
     dw `00033000
-    dw `03322330
-    dw `33122130
-    dw `33122130
-    dw `03322330
-    dw `00033000
+    dw `00322230
+    dw `00322230
+    dw `00311130
+    dw `00311130
+    dw `00031300
+    dw `00003000
+    ; W
+    dw `00000000
+    dw `00333300
+    dw `03221130
+    dw `03221130
+    dw `03221130
+    dw `00333300
+    dw `00000000
     dw `00000000
 
 ; Extra HUD letters: X, Y, S, P (tiles 32-35)
@@ -1217,12 +1218,12 @@ ShoreSprites:
     dw `00222000
     dw `00022000
     dw `00200200
-; 108 TILE_DINGHY — rowboat, top-down
+; 108 TILE_DINGHY — rowboat with oars, top-down
     dw `00000000
     dw `00000000
     dw `00333300
     dw `03222230
-    dw `03211230
+    dw `13211231
     dw `03222230
     dw `00333300
     dw `00000000
@@ -1244,12 +1245,12 @@ ShoreSprites:
     dw `32122123
     dw `03222230
     dw `00333300
-; 111 TILE_SITE_GIBBET — gallows frame
-    dw `00033300
+; 111 TILE_SITE_GIBBET — gallows with a hanging man
+    dw `00333300
     dw `00010010
-    dw `00010010
-    dw `00010100
-    dw `00010000
+    dw `00010110
+    dw `00010200
+    dw `00010200
     dw `00010000
     dw `00333300
     dw `00000000
@@ -1271,23 +1272,23 @@ ShoreSprites:
     dw `00300300
     dw `03000030
     dw `00000000
-; 114 TILE_SNAKE
+; 114 TILE_SNAKE — coiled, head raised
     dw `00000000
-    dw `00000000
-    dw `00133300
-    dw `01313130
-    dw `00300100
+    dw `00133000
+    dw `01313000
+    dw `00300000
     dw `00033300
-    dw `03300330
+    dw `00000300
+    dw `00333000
     dw `00000000
-; 115 TILE_SKEL — shambling skeleton
+; 115 TILE_SKEL — shambling skeleton, ribs and arms
     dw `00033000
     dw `00311300
     dw `00033000
     dw `00020000
-    dw `00222000
+    dw `02222200
     dw `00202000
-    dw `00222200
+    dw `00202000
     dw `00200200
 ; 116 TILE_COIN
     dw `00000000
@@ -1298,18 +1299,18 @@ ShoreSprites:
     dw `00322300
     dw `00033000
     dw `00000000
-; 117 TILE_TAVERN — a foaming mug
+; 117 TILE_TAVERN — a foaming mug, head spilling over
     dw `00000000
+    dw `00110000
     dw `00333300
-    dw `03222230
     dw `03222233
     dw `03222230
     dw `03222230
     dw `00333300
     dw `00000000
-; 118 TILE_MARKET — a stack of coin
+; 118 TILE_MARKET — a stack of coin with a glint
     dw `00000000
-    dw `00033000
+    dw `00011000
     dw `00322300
     dw `03222230
     dw `00033000
@@ -1325,7 +1326,7 @@ ShoreSprites:
     dw `03030030
     dw `00333000
     dw `00000000
-; 120 TILE_HARBOR — the harbor bell
+; 120 TILE_HARBOR — the harbor bell, clapper out
     dw `00030000
     dw `00333000
     dw `03222230
@@ -1333,7 +1334,7 @@ ShoreSprites:
     dw `03222230
     dw `03333330
     dw `00030000
-    dw `00000000
+    dw `00020000
 
 SECTION "Ball tile", ROMX, BANK[3]
 BallTile:
@@ -1348,13 +1349,13 @@ BallTile:
 
 SECTION "Splash tile", ROMX, BANK[3]
 SplashTile:
-    dw `00000000
     dw `03000030
-    dw `00000000
-    dw `30033003
-    dw `00000000
-    dw `03300330
-    dw `00000000
+    dw `00300300
+    dw `00033000
+    dw `03333330
+    dw `00033000
+    dw `00300300
+    dw `03000030
     dw `00000000
 
 SECTION "Skull tile", ROMX, BANK[3]
