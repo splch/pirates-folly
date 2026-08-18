@@ -63,6 +63,10 @@ LoadTiles::
     ld de, $8000 + 137 * 16        ; variant waters (AnimWater syncs them)
     ld bc, 32
     call CopyVRAM
+    ld hl, WaterFrames + 64
+    ld de, $8000 + 155 * 16
+    ld bc, 16
+    call CopyVRAM
     ld hl, EmblemTiles
     ld de, $8000 + TILE_EMBLEM * 16
     ld bc, 16 * 16
@@ -526,7 +530,7 @@ EmblemTiles:
 PUSHS "CGB palette data", ROMX, BANK[3]
 CGB_BGP:
     dw $7FFF, $5294, $2108, $0000  ; 0 UI: white/lt gray/dk gray/black
-    dw $7FDA, $7ACC, $69C6, $4903  ; 1 deep sea: foam -> navy
+    dw $7FDA, $7AEE, $69C6, $4903  ; 1 deep sea: foam -> navy
     dw $53BF, $32DB, $1DF4, $112C  ; 2 sand: pale dune -> wet brown
     dw $3BB6, $26ED, $1A08, $1144  ; 3 grass: light meadow -> loam
     dw $7BF8, $634A, $4E45, $3542  ; 4 shallow: lagoon -> teal
@@ -538,9 +542,9 @@ CGB_OBP:
     dw $7FFF, $5294, $0850, $0000  ; obj1 pirate: white/gray/dark red/black
 POPS
 
-; 4-phase water animation: [deep][shallow][deep2][shallow3] per phase,
-; 16 bytes each. AnimWater copies one 64-byte phase over tiles 1-2 and
-; 137-138 every 16 frames.
+; 4-phase water animation: [deep][shallow][deep2][shallow3][deep3] per
+; phase, 16 bytes each. AnimWater copies one 80-byte phase over tiles 1-2,
+; 137-138, and 155 every 16 frames.
 ; Every row is 4-periodic (abcdabcd), so drifting right one pixel per
 ; phase loops exactly (rotation == shift across tile boundaries).
 ; ROM0: AnimWater (also ROM0) reads it for both sailing and shore mode.
@@ -551,149 +555,185 @@ WaterFrames::
     dw `00000000
     dw `00000000
     dw `01100110
+    dw `10001000
     dw `00000000
     dw `00000000
-    dw `00000000
-    dw `10011001
+    dw `00100010
     dw `00000000
     ; shallow
     dw `00000000
-    dw `00000000
-    dw `01100110
-    dw `00000000
     dw `01000100
+    dw `01100110
+    dw `10001000
     dw `00000000
-    dw `10011001
+    dw `00000000
+    dw `00100010
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
     dw `00000000
-    dw `00110011
-    dw `00000000
     dw `11001100
+    dw `00010001
     dw `00000000
+    dw `01000100
     dw `00000000
     ; shallow3
     dw `00000000
-    dw `00000000
-    dw `00000000
-    dw `00110011
+    dw `00100010
     dw `00000000
     dw `11001100
-    dw `00000000
     dw `00010001
+    dw `00000000
+    dw `01000100
+    dw `00000000
+    ; deep3
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `01100110
+    dw `10001000
+    dw `00000000
     ; --- phase 1 ---
     ; deep
     dw `00000000
     dw `00000000
     dw `00110011
+    dw `01000100
     dw `00000000
     dw `00000000
-    dw `00000000
-    dw `11001100
+    dw `00010001
     dw `00000000
     ; shallow
     dw `00000000
-    dw `00000000
-    dw `00110011
-    dw `00000000
     dw `00100010
+    dw `00110011
+    dw `01000100
     dw `00000000
-    dw `11001100
+    dw `00000000
+    dw `00010001
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
     dw `00000000
-    dw `10011001
-    dw `00000000
     dw `01100110
+    dw `10001000
     dw `00000000
+    dw `00100010
     dw `00000000
     ; shallow3
     dw `00000000
-    dw `00000000
-    dw `00000000
-    dw `10011001
+    dw `00010001
     dw `00000000
     dw `01100110
-    dw `00000000
     dw `10001000
+    dw `00000000
+    dw `00100010
+    dw `00000000
+    ; deep3
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00110011
+    dw `01000100
+    dw `00000000
     ; --- phase 2 ---
     ; deep
     dw `00000000
     dw `00000000
     dw `10011001
+    dw `00100010
     dw `00000000
     dw `00000000
-    dw `00000000
-    dw `01100110
+    dw `10001000
     dw `00000000
     ; shallow
     dw `00000000
-    dw `00000000
-    dw `10011001
-    dw `00000000
     dw `00010001
+    dw `10011001
+    dw `00100010
     dw `00000000
-    dw `01100110
+    dw `00000000
+    dw `10001000
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
     dw `00000000
-    dw `11001100
-    dw `00000000
     dw `00110011
+    dw `01000100
     dw `00000000
+    dw `00010001
     dw `00000000
     ; shallow3
     dw `00000000
-    dw `00000000
-    dw `00000000
-    dw `11001100
+    dw `10001000
     dw `00000000
     dw `00110011
-    dw `00000000
     dw `01000100
+    dw `00000000
+    dw `00010001
+    dw `00000000
+    ; deep3
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `10011001
+    dw `00100010
+    dw `00000000
     ; --- phase 3 ---
     ; deep
     dw `00000000
     dw `00000000
     dw `11001100
+    dw `00010001
     dw `00000000
     dw `00000000
-    dw `00000000
-    dw `00110011
+    dw `01000100
     dw `00000000
     ; shallow
     dw `00000000
-    dw `00000000
-    dw `11001100
-    dw `00000000
     dw `10001000
+    dw `11001100
+    dw `00010001
     dw `00000000
-    dw `00110011
+    dw `00000000
+    dw `01000100
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
     dw `00000000
-    dw `01100110
-    dw `00000000
     dw `10011001
+    dw `00100010
     dw `00000000
+    dw `10001000
     dw `00000000
     ; shallow3
     dw `00000000
-    dw `00000000
-    dw `00000000
-    dw `01100110
+    dw `01000100
     dw `00000000
     dw `10011001
-    dw `00000000
     dw `00100010
+    dw `00000000
+    dw `10001000
+    dw `00000000
+    ; deep3
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `11001100
+    dw `00010001
+    dw `00000000
 POPS
 
 ; tiles 13-14: port marker (chart) + dock planks (in-world)
@@ -1094,23 +1134,23 @@ TerrainTiles:
     dw `00000000
     dw `00000000
     dw `00000000
-; 1 TILE_DEEP — open water: sparse single-tone wavelets (WaterFrames phase 0)
+; 1 TILE_DEEP — open water: little curling waves (WaterFrames phase 0)
     dw `00000000
     dw `00000000
     dw `01100110
+    dw `10001000
     dw `00000000
     dw `00000000
+    dw `00100010
     dw `00000000
-    dw `10011001
-    dw `00000000
-; 2 TILE_SHALLOW — wavelets + a glint row (WaterFrames phase 0)
-    dw `00000000
-    dw `00000000
-    dw `01100110
+; 2 TILE_SHALLOW — waves + a foam-glint row (WaterFrames phase 0)
     dw `00000000
     dw `01000100
+    dw `01100110
+    dw `10001000
     dw `00000000
-    dw `10011001
+    dw `00000000
+    dw `00100010
     dw `00000000
 ; 3 TILE_SAND — flat beach, two pebble clusters
     dw `11111111
@@ -1161,15 +1201,15 @@ TerrainTiles:
 ; tiles 121-124: sea-terrain visual variants (DecorateTile, world.asm).
 ; Render-only substitutes for the canonical tiles 2-5.
 VariantTiles:
-; 121 TILE_SHALLOW2 — foam-flecked shallow (near-coast band)
+; 121 TILE_SHALLOW2 — calm foam-fleck band near the sand (static)
     dw `00000000
-    dw `00000000
-    dw `01100110
-    dw `00010000
     dw `01000100
     dw `00000000
-    dw `10011001
-    dw `00000010
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00100010
+    dw `00000000
 ; 122 TILE_SAND2 — pebbles in a different spot
     dw `11111111
     dw `11122111

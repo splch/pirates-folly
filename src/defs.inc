@@ -138,6 +138,7 @@ DEF TILE_FRAME     EQU 136    ; thin rule (port screen frame)
 DEF TILE_DEEP2     EQU 137    ; second animated deep-water variant
 DEF TILE_SHALLOW3  EQU 138    ; second animated shallow-water variant
 DEF TILE_EMBLEM    EQU 139    ; 139-154: title skull & crossbones (4x4)
+DEF TILE_DEEP3     EQU 155    ; third animated deep-water variant
 
 ; --- Port towns (S4) ---
 ; In a port district, four buildings spawn at hashed spots: tavern,

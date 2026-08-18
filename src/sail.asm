@@ -283,12 +283,15 @@ AnimWater::
     swap a                         ; phase << 4
     ld c, a
     ld b, 0
+    ld h, b
+    ld l, c                         ; hl = phase * 16
     sla c
     rl b
     sla c
-    rl b                           ; bc = phase * 64
-    ld hl, WaterFrames
-    add hl, bc
+    rl b                            ; bc = phase * 64
+    add hl, bc                      ; hl = phase * 80
+    ld de, WaterFrames
+    add hl, de
     push hl
     ld de, $8000 + 16              ; tiles 1 (deep) and 2 (shallow)
     ld bc, 32
@@ -296,8 +299,15 @@ AnimWater::
     pop hl
     ld bc, 32
     add hl, bc
+    push hl
     ld de, $8000 + 137 * 16        ; tiles 137-138: the variant waters
     ld bc, 32
+    call CopyVRAM
+    pop hl
+    ld bc, 32
+    add hl, bc
+    ld de, $8000 + 155 * 16        ; tile 155: third deep variant
+    ld bc, 16
     call CopyVRAM
     ret
 POPS

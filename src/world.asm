@@ -386,9 +386,18 @@ DecorateTile:
     ret
 .deep2
     ld a, b
-    and 4                           ; 25% alternate deep waves
+    and 12                          ; three deep variants, 25% each
     jr z, .keep
+    cp 4
+    jr z, .d2
+    cp 8
+    jr z, .d3
+    jr .keep
+.d2
     ld a, TILE_DEEP2
+    ret
+.d3
+    ld a, TILE_DEEP3
     ret
 .shallow3
     ld a, b
@@ -481,7 +490,7 @@ ATTR_TAB:
 FOR i, 256
     IF i == TILE_BLANK || i == TILE_PORT || i == TILE_LET_X || i == TILE_SKULL
         db 0
-    ELIF i == TILE_DEEP || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50 || i == TILE_DEEP2
+    ELIF i == TILE_DEEP || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50 || i == TILE_DEEP2 || i == TILE_DEEP3
         db 1
     ELIF i == TILE_DOCK || i == TILE_SAND || i == TILE_SAND2 || i == TILE_SH_SAND50 || i == TILE_SAND_SH25 || i == TILE_SAND_GR25 || i == TILE_SAND_GR50
         db 2

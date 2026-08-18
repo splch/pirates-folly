@@ -139,7 +139,10 @@ def decorate_tile(wx, wy, t, s16):
     if t == 1:                              # deep
         if e >= 130: return 126
         if e >= 128: return 125
-        return 137 if mix & 4 else t        # TILE_DEEP2 variant
+        v = mix & 12                        # three deep variants, 25% each
+        if v == 4: return 137               # TILE_DEEP2
+        if v == 8: return 155               # TILE_DEEP3
+        return t
     if t == 2:                              # shallow
         if e >= 146: return 129
         if e >= 144: return 121
@@ -1025,7 +1028,7 @@ def r19_cgb_streaming_no_drops():
     def want_attr(t):                    # mirrors world.asm ATTR_TAB
         if t in (0, 13, 32, 68):
             return 0
-        if t in (1, 125, 126, 137):
+        if t in (1, 125, 126, 137, 155):
             return 1
         if t in (2, 121, 127, 138):
             return 4
