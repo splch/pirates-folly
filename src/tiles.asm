@@ -50,6 +50,10 @@ LoadTiles::
     ld hl, BallTile
     ld de, $8000 + 12 * 16
     ld bc, 16
+    call CopyVRAM
+    ld hl, VariantTiles
+    ld de, $8000 + 121 * 16
+    ld bc, 4 * 16
     ; fall through
 ; in: hl = src, de = dst, bc = count (must be a multiple of 8).
 ; Unrolled 8x: 3 instructions per byte instead of 7.
@@ -734,6 +738,46 @@ TerrainTiles:
     dw `00000000
     dw `00000000
     dw `00000000
+    dw `33333333
+    dw `33333333
+
+; tiles 121-124: sea-terrain visual variants (DecorateTile, world.asm).
+; Render-only substitutes for the canonical tiles 2-5.
+VariantTiles:
+; 121 TILE_SHALLOW2 — foam-flecked shallow (near-coast band)
+    dw `00100010
+    dw `00000000
+    dw `01100110
+    dw `00000100
+    dw `00010001
+    dw `00100000
+    dw `01100110
+    dw `00000000
+; 122 TILE_SAND2 — shells and pebbles
+    dw `11111111
+    dw `12111211
+    dw `11011111
+    dw `11212111
+    dw `11110111
+    dw `12131212
+    dw `11111111
+    dw `01121110
+; 123 TILE_GRASS2 — flowered tufts
+    dw `22222222
+    dw `22322221
+    dw `22322222
+    dw `22212222
+    dw `23222322
+    dw `23222322
+    dw `22221222
+    dw `22232222
+; 124 TILE_FOREST2 — sparse canopy, gaps of undergrowth
+    dw `33333333
+    dw `33233333
+    dw `32233332
+    dw `33333333
+    dw `33332233
+    dw `33332233
     dw `33333333
     dw `33333333
 

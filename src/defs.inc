@@ -111,6 +111,15 @@ DEF TILE_MARKET      EQU 118
 DEF TILE_SHIPYARD    EQU 119
 DEF TILE_HARBOR      EQU 120
 
+; --- Sea-terrain visual variants (render-only) ---
+; Picked by DecorateTile (world.asm) in the staging path; WorldTile still
+; returns canonical IDs, so collision/chart/logic never see these.
+DEF TILE_SHALLOW2 EQU 121     ; foam-flecked shallow (near-coast band)
+DEF TILE_SAND2    EQU 122     ; shells-and-pebbles sand
+DEF TILE_GRASS2   EQU 123     ; flowered grass
+DEF TILE_FOREST2  EQU 124     ; sparse canopy
+DEF E_FOAM_MIN    EQU 144     ; shallow at/above this elevation gets foam
+
 ; --- Port towns (S4) ---
 ; In a port district, four buildings spawn at hashed spots: tavern,
 ; market, shipyard, harbor. Each opens the matching port screen.

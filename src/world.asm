@@ -221,7 +221,9 @@ TileDetail:
     ret
 
 ; Elevation -> terrain tile. in: a = e; uses wWX/wGRrow for detail.
+; Stashes e in wE1 (Bilerp4 is done with it) for DecorateTile.
 TerrainFull:
+    ld [wE1], a
     cp E_DEEP_MAX
     jr c, .deep
     cp E_SHALLOW_MAX
@@ -252,6 +254,70 @@ TerrainFull:
     ret
 .deep
     ld a, TILE_DEEP
+    ret
+
+; ---------------------------------------------------------------------------
+; Visual variants (render-only). in: a = canonical tile from TerrainFull;
+; out: a = tile to stage. WorldTile still returns canonical IDs, so
+; collision/chart/logic are unaffected — this runs only on staged tiles.
+; The variant pick mixes the tile's four lattice corner hashes (still live
+; in wH00/wH10/wH01/wH11 when this runs): free, per-tile random, and the
+; mirror models reproduce it exactly (elevation-based picks were unstable
+; across the asm/Python implementations).
+; ---------------------------------------------------------------------------
+DecorateTile:
+    cp TILE_SHALLOW
+    jr z, .shallow
+    cp TILE_FOREST
+    jp z, .hasMix
+    cp TILE_SAND
+    jr z, .hasMix
+    cp TILE_GRASS
+    ret nz                          ; deep/mountain/etc: no variant
+.hasMix
+    ld c, a                         ; canonical id
+    ; mix = the tile's lattice-cell hash — wLatTop[j] is LatHash(ix0+j, iy0)
+    ; in row stages and LatHash(ix0, iy0+j) in column stages, i.e. exactly
+    ; this tile's cell in both. A fresh LatHash here blew the R49 frame
+    ; budget; the cache is free.
+    ld a, [wJ]
+    ld e, a
+    ld d, 0
+    ld hl, wLatTop
+    add hl, de
+    ld b, [hl]                      ; b = LatHash(cell ix, cell iy)
+    ld a, c
+    cp TILE_SAND
+    jr z, .sand
+    cp TILE_GRASS
+    jr z, .grass
+    ; forest: 25% sparse canopy
+    ld a, b
+    and 4
+    jr z, .keep
+    ld a, TILE_FOREST2
+    ret
+.sand
+    ld a, b
+    and 4                           ; 25% shells-and-pebbles
+    jr z, .keep
+    ld a, TILE_SAND2
+    ret
+.grass
+    ld a, b
+    and 8                           ; 50% flowered
+    jr z, .keep
+    ld a, TILE_GRASS2
+    ret
+.keep
+    ld a, c
+    ret
+.shallow
+    ld a, [wE1]
+    cp E_FOAM_MIN                   ; near-coast band: flecked with foam
+    ld a, TILE_SHALLOW
+    ret c
+    ld a, TILE_SHALLOW2
     ret
 
 ; ---------------------------------------------------------------------------
@@ -334,10 +400,14 @@ TileAttr:
     jr z, .ui                   ; chart skull marker -> ink
     cp TILE_DOCK
     jr z, .sand                 ; dock -> wood (sand palette)
+    cp TILE_SHALLOW2
+    jr z, .sea                  ; foam variant is sea-colored
+    cp TILE_SAND2
+    jr z, .sand
     cp TILE_SAND
     jr c, .sea
     jr z, .sand
-    ld a, 3                     ; grass/forest/mountain
+    ld a, 3                     ; grass/forest/mountain (and variants)
     ret
 .ui
     xor a
@@ -515,6 +585,7 @@ GenRowTiles::
     call TerrainFull             ; a = tile
     cp TILE_SAND
     call z, DockTileIfPort       ; beach in a port district -> dock
+    call DecorateTile            ; visual variant (render-only)
     ld b, a
     call TileAttr
     ld c, a
@@ -696,6 +767,7 @@ GenColTiles::
     call TerrainFull             ; a = tile
     cp TILE_SAND
     call z, DockTileIfPort       ; beach in a port district -> dock
+    call DecorateTile            ; visual variant (render-only)
     ld b, a
     call TileAttr
     ld c, a

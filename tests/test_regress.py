@@ -128,6 +128,21 @@ def shown_tile(wx, wy, s16):
     t = tile(wx, wy, s16)
     if t == 3 and has_port(wx >> 2, wy >> 2, s16):
         return 14
+    return decorate_tile(wx, wy, t, s16)
+
+# world.asm DecorateTile: render-only variants picked from a single
+# LatHash of the tile's lattice cell — a pure function, so every streaming
+# pass converges (cache-sensitive corner mixes were flaky).
+def decorate_tile(wx, wy, t, s16):
+    if t == 2:
+        return 121 if elevation(wx, wy, s16) >= 144 else t
+    mix = lathash(wx >> 3, wy >> 3, s16)
+    if t == 3:
+        return 122 if mix & 4 else t
+    if t == 4:
+        return 123 if mix & 8 else t
+    if t == 5:
+        return 124 if mix & 4 else t
     return t
 
 # shore (2x zoom) model: dig-site tests (R32+)
@@ -995,9 +1010,9 @@ def r19_cgb_streaming_no_drops():
     def want_attr(t):                    # mirrors world.asm TileAttr
         if t in (0, 13):
             return 0
-        if t in (14, 3):
+        if t in (14, 3, 122):
             return 2
-        return 1 if t < 3 else 3
+        return 1 if t < 3 or t == 121 else 3
 
     def check_window(tag):
         tx0, ty0 = w16(mem, "wTileX"), w16(mem, "wTileY")
