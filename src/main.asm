@@ -733,7 +733,8 @@ InitNewGame:
 ; LCD-off draw of the title. Sea rows + a ship, then text.
 DrawTitleScreen::
     call DrawSeedScreen            ; clear to blank (LCD off)
-    ; two sea rows at the bottom
+    ; sea at the bottom: two deep rows, then two shallow rows (a gradient
+    ; into the foreground, like water shelving toward the viewer)
     ld hl, $9800 + 14 * 32
     ld b, 64
 .sea
@@ -741,6 +742,12 @@ DrawTitleScreen::
     ld [hli], a
     dec b
     jr nz, .sea
+    ld b, 64
+.shal
+    ld a, TILE_SHALLOW
+    ld [hli], a
+    dec b
+    jr nz, .shal
     ; a lone ship on the horizon
     ld a, TILE_SHIP_S
     ld [$9800 + 13 * 32 + 9], a
@@ -748,6 +755,25 @@ DrawTitleScreen::
     ld a, TILE_GULL
     ld [$9800 + 2 * 32 + 3], a
     ld [$9800 + 2 * 32 + 15], a
+    ; double rules above and below the title block
+    ld hl, $9800 + 3 * 32 + 2
+    ld b, 16
+.rule1
+    ld a, TILE_FRAME
+    ld [hli], a
+    dec b
+    jr nz, .rule1
+    ld hl, $9800 + 10 * 32 + 2
+    ld b, 16
+.rule2
+    ld a, TILE_FRAME
+    ld [hli], a
+    dec b
+    jr nz, .rule2
+    ; compass roses flanking the title
+    ld a, TILE_COMPASS
+    ld [$9800 + 4 * 32 + 1], a
+    ld [$9800 + 4 * 32 + 18], a
     ld hl, StrTitle
     ld de, $9800 + 4 * 32 + 3
     call PrintStr

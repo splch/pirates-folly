@@ -542,7 +542,7 @@ RenderPort:
     ld de, $9800 + 4 * 32 + 11
     call PrintDec2
     ld hl, StrCrew
-    ld de, $9800 + 4 * 32 + 13
+    ld de, $9800 + 4 * 32 + 14
     call PrintStr
     ld a, [wCrew]
     ld de, $9800 + 4 * 32 + 18
@@ -1705,7 +1705,7 @@ StrUpgHelp: db "A BUY  B BACK", 0
 StrSaved:   db "GAME SAVED", 0
 StrAnyKey:  db "PRESS B TO RETURN", 0
 StrTradeHd: db "GOODS   PRICE OWN", 0
-StrTradeHelp: db "L SELL  R BUY  B BACK", 0
+StrTradeHelp: db "L SELL R BUY B BACK", 0
 StrRepairCost: db "COST 2 PER POINT", 0
 StrRecruitCost: db "COST 5 PER CREW", 0
 StrAConfirm: db "PRESS A", 0

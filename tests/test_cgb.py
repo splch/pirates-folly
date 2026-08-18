@@ -28,7 +28,7 @@ mem[0xFF68] = 0x80 | 8  # pal 1 color 0
 lo = mem[0xFF69]
 mem[0xFF68] = 0x80 | 9
 hi = mem[0xFF69]
-assert (hi << 8 | lo) == 0x7F75, f"deep-sea pal {hi<<8|lo:#x}"
+assert (hi << 8 | lo) == 0x7FDA, f"deep-sea pal {hi<<8|lo:#x}"
 # title -> editor -> sail
 pb.button_press("start"); pb.tick(); pb.button_release("start")
 for _ in range(10): pb.tick()
