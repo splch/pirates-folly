@@ -257,29 +257,106 @@ TerrainFull:
     ret
 
 ; ---------------------------------------------------------------------------
-; Visual variants (render-only). in: a = canonical tile from TerrainFull;
+; Visual substitution (render-only). in: a = canonical tile from TerrainFull;
 ; out: a = tile to stage. WorldTile still returns canonical IDs, so
 ; collision/chart/logic are unaffected — this runs only on staged tiles.
-; The variant pick mixes the tile's four lattice corner hashes (still live
-; in wH00/wH10/wH01/wH11 when this runs): free, per-tile random, and the
-; mirror models reproduce it exactly (elevation-based picks were unstable
-; across the asm/Python implementations).
+; Two kinds of substitutes:
+;   - transitions: synthesized Bayer-dither mixes (defs.inc TILE_*_*),
+;     mapped from narrow elevation bands on each side of the thresholds
+;   - plain-terrain variants: sand/grass/forest alternates, picked from the
+;     tile's lattice-cell hash — wLatTop[j] is LatHash(ix0+j, iy0) in row
+;     stages and LatHash(ix0, iy0+j) in column stages, i.e. exactly this
+;     tile's cell in both. (A fresh LatHash here blew the R49 frame budget.)
 ; ---------------------------------------------------------------------------
 DecorateTile:
+    cp TILE_DEEP
+    jr z, .deep
     cp TILE_SHALLOW
     jr z, .shallow
     cp TILE_FOREST
     jp z, .hasMix
     cp TILE_SAND
-    jr z, .hasMix
+    jr z, .sand
     cp TILE_GRASS
-    ret nz                          ; deep/mountain/etc: no variant
+    ret nz                          ; mountain/etc: no substitute
+    ; grass: sand-mix bands below, plain (+variant) above 161
+    ld a, [wE1]
+    cp 160
+    jr c, .g25
+    cp 162
+    jr c, .g50
+    ld a, TILE_GRASS
+    jp .hasMix
+.g50
+    ld a, TILE_SAND_GR50
+    ret
+.g25
+    ld a, TILE_GR_SAND25
+    ret
+.deep
+    ld a, [wE1]
+    cp 128
+    jr c, .dKeep                        ; plain deep
+    cp 130
+    jr c, .d25
+    ld a, TILE_DEEP_SH50
+    ret
+.dKeep
+    ld a, TILE_DEEP
+    ret
+.d25
+    ld a, TILE_DEEP_SH25
+    ret
+.shallow
+    ld a, [wE1]
+    cp 134
+    jr c, .s25                      ; 132-133
+    cp 136
+    jr c, .s50                      ; 134-135
+    cp 144
+    jr c, .sKeep                    ; plain shallow
+    cp 146
+    jr c, .foam                     ; 144-145
+    ld a, TILE_SH_SAND50
+    ret
+.sKeep
+    ld a, TILE_SHALLOW
+    ret
+.s25
+    ld a, TILE_SH_DEEP25
+    ret
+.s50
+    ld a, TILE_DEEP_SH50
+    ret
+.foam
+    ld a, TILE_SHALLOW2
+    ret
+.sand
+    ld a, [wE1]
+    cp 150
+    jr c, .sa25                     ; 148-149
+    cp 152
+    jr c, .sa50                     ; 150-151
+    cp 154
+    jr nc, .sandHi                  ; 152-153: plain sand / variant
+    ld a, TILE_SAND
+    jp .hasMix
+.sandHi
+    cp 156
+    jr c, .sg25                     ; 154-155
+    ld a, TILE_SAND_GR50
+    ret
+.sa25
+    ld a, TILE_SAND_SH25
+    ret
+.sa50
+    ld a, TILE_SH_SAND50
+    ret
+.sg25
+    ld a, TILE_SAND_GR25
+    ret
 .hasMix
     ld c, a                         ; canonical id
-    ; mix = the tile's lattice-cell hash — wLatTop[j] is LatHash(ix0+j, iy0)
-    ; in row stages and LatHash(ix0, iy0+j) in column stages, i.e. exactly
-    ; this tile's cell in both. A fresh LatHash here blew the R49 frame
-    ; budget; the cache is free.
     ld a, [wJ]
     ld e, a
     ld d, 0
@@ -288,22 +365,22 @@ DecorateTile:
     ld b, [hl]                      ; b = LatHash(cell ix, cell iy)
     ld a, c
     cp TILE_SAND
-    jr z, .sand
+    jr z, .sand2
     cp TILE_GRASS
-    jr z, .grass
+    jr z, .grass2
     ; forest: 25% sparse canopy
     ld a, b
     and 4
     jr z, .keep
     ld a, TILE_FOREST2
     ret
-.sand
+.sand2
     ld a, b
     and 4                           ; 25% shells-and-pebbles
     jr z, .keep
     ld a, TILE_SAND2
     ret
-.grass
+.grass2
     ld a, b
     and 8                           ; 50% flowered
     jr z, .keep
@@ -311,13 +388,6 @@ DecorateTile:
     ret
 .keep
     ld a, c
-    ret
-.shallow
-    ld a, [wE1]
-    cp E_FOAM_MIN                   ; near-coast band: flecked with foam
-    ld a, TILE_SHALLOW
-    ret c
-    ld a, TILE_SHALLOW2
     ret
 
 ; ---------------------------------------------------------------------------
@@ -388,35 +458,27 @@ WorldTile::
 ; Staged generation (logic phase) + blits (VBlank)
 ; ---------------------------------------------------------------------------
 
-; in: a = terrain tile id; out: a = CGB palette attr. clobbers a only.
+PUSHS "Tile attr table", ROM0, ALIGN[8]
+; CGB palette per tile id: 0 = UI/ink, 1 = sea, 2 = sand, 3 = land.
+ATTR_TAB:
+FOR i, 256
+    IF i == TILE_BLANK || i == TILE_PORT || i == TILE_LET_X || i == TILE_SKULL
+        db 0
+    ELIF i == TILE_DOCK || i == TILE_SAND || i == TILE_SAND2 || i == TILE_SH_SAND50 || i == TILE_SAND_SH25 || i == TILE_SAND_GR25 || i == TILE_SAND_GR50
+        db 2
+    ELIF i < TILE_SAND || i == TILE_SHALLOW2 || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50 || i == TILE_SH_DEEP25
+        db 1
+    ELSE
+        db 3
+    ENDC
+ENDR
+POPS
+
+; in: a = terrain tile id; out: a = CGB palette attr. clobbers a, h, l
 TileAttr:
-    and a
-    ret z                       ; blank -> UI palette 0
-    cp TILE_PORT
-    jr z, .ui                   ; port marker -> ink
-    cp TILE_LET_X
-    jr z, .ui                   ; chart X marker -> ink
-    cp TILE_SKULL
-    jr z, .ui                   ; chart skull marker -> ink
-    cp TILE_DOCK
-    jr z, .sand                 ; dock -> wood (sand palette)
-    cp TILE_SHALLOW2
-    jr z, .sea                  ; foam variant is sea-colored
-    cp TILE_SAND2
-    jr z, .sand
-    cp TILE_SAND
-    jr c, .sea
-    jr z, .sand
-    ld a, 3                     ; grass/forest/mountain (and variants)
-    ret
-.ui
-    xor a
-    ret
-.sea
-    ld a, 1
-    ret
-.sand
-    ld a, 2
+    ld l, a
+    ld h, HIGH(ATTR_TAB)
+    ld a, [hl]
     ret
 
 ; in: a = TILE_SAND (a beach tile at wWX/wGRrow); out: a = TILE_DOCK if the

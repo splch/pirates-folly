@@ -130,18 +130,33 @@ def shown_tile(wx, wy, s16):
         return 14
     return decorate_tile(wx, wy, t, s16)
 
-# world.asm DecorateTile: render-only variants picked from a single
-# LatHash of the tile's lattice cell — a pure function, so every streaming
-# pass converges (cache-sensitive corner mixes were flaky).
+# world.asm DecorateTile: render-only substitutes. Transition tiles are
+# Bayer-dither mixes mapped from elevation bands around each threshold;
+# plain-terrain variants come from the tile's lattice-cell hash.
 def decorate_tile(wx, wy, t, s16):
-    if t == 2:
-        return 121 if elevation(wx, wy, s16) >= 144 else t
+    e = elevation(wx, wy, s16)
+    if t == 1:                              # deep
+        if e >= 130: return 126
+        if e >= 128: return 125
+        return t
+    if t == 2:                              # shallow
+        if e >= 146: return 129
+        if e >= 144: return 121
+        if e >= 136: return t
+        if e >= 134: return 126
+        return 127
     mix = lathash(wx >> 3, wy >> 3, s16)
-    if t == 3:
-        return 122 if mix & 4 else t
-    if t == 4:
-        return 123 if mix & 8 else t
-    if t == 5:
+    if t == 3:                              # sand
+        if e >= 156: return 132
+        if e >= 154: return 131
+        if e >= 152: return 122 if mix & 4 else t
+        if e >= 150: return 129
+        return 130
+    if t == 4:                              # grass
+        if e >= 162: return 123 if mix & 8 else t
+        if e >= 160: return 132
+        return 133
+    if t == 5:                              # forest
         return 124 if mix & 4 else t
     return t
 
@@ -1010,9 +1025,9 @@ def r19_cgb_streaming_no_drops():
     def want_attr(t):                    # mirrors world.asm TileAttr
         if t in (0, 13):
             return 0
-        if t in (14, 3, 122):
+        if t in (14, 3, 122, 129, 130, 131, 132):
             return 2
-        return 1 if t < 3 or t == 121 else 3
+        return 1 if t < 3 or t in (121, 125, 126, 127) else 3
 
     def check_window(tag):
         tx0, ty0 = w16(mem, "wTileX"), w16(mem, "wTileY")

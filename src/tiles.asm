@@ -54,7 +54,196 @@ LoadTiles::
     ld hl, VariantTiles
     ld de, $8000 + 121 * 16
     ld bc, 4 * 16
-    ; fall through
+    call CopyVRAM
+    ; --- synthesize the transition tiles (Bayer-dither mixes) ---
+    ld hl, TerrainTiles + 16         ; DEEP
+    ld de, TerrainTiles + 32         ; SHALLOW
+    ld b, 4
+    ld a, TILE_DEEP_SH25
+    call SynthTile
+    ld hl, TerrainTiles + 16
+    ld de, TerrainTiles + 32
+    ld b, 8
+    ld a, TILE_DEEP_SH50
+    call SynthTile
+    ld hl, TerrainTiles + 32         ; SHALLOW
+    ld de, TerrainTiles + 16         ; DEEP
+    ld b, 4
+    ld a, TILE_SH_DEEP25
+    call SynthTile
+    ld hl, TerrainTiles + 32         ; SHALLOW
+    ld de, TerrainTiles + 48         ; SAND
+    ld b, 8
+    ld a, TILE_SH_SAND50
+    call SynthTile
+    ld hl, TerrainTiles + 48         ; SAND
+    ld de, TerrainTiles + 32         ; SHALLOW
+    ld b, 4
+    ld a, TILE_SAND_SH25
+    call SynthTile
+    ld hl, TerrainTiles + 48         ; SAND
+    ld de, TerrainTiles + 64         ; GRASS
+    ld b, 4
+    ld a, TILE_SAND_GR25
+    call SynthTile
+    ld hl, TerrainTiles + 48
+    ld de, TerrainTiles + 64
+    ld b, 8
+    ld a, TILE_SAND_GR50
+    call SynthTile
+    ld hl, TerrainTiles + 64         ; GRASS
+    ld de, TerrainTiles + 48         ; SAND
+    ld b, 4
+    ld a, TILE_GR_SAND25
+    call SynthTile
+    ret
+
+; 4x4 ordered-dither matrix (values 0-15); a pixel takes Q when its entry
+; is below the ratio (4 = 25%, 8 = 50%, 12 = 75%).
+BAYER4: db 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5
+
+; in: hl = parent P (16 bytes), de = parent Q (16 bytes), b = Q ratio
+; (4/8/12), a = destination tile id. Synthesizes into wMixBuf, then VRAM.
+SynthTile:
+    push af
+    call MixTile
+    pop af
+    ld l, a
+    ld h, 0
+    REPT 4
+    add hl, hl
+    ENDR                            ; hl = tile id * 16
+    ld de, $8000
+    add hl, de
+    push hl
+    pop de
+    ld hl, wMixBuf
+    ld bc, 16
+    jp CopyVRAM
+
+; in: hl = P, de = Q, b = Q ratio. Fills wMixBuf (16 bytes).
+MixTile:
+    xor a
+    ld [wMixRow], a
+.rowLoop
+    ld a, [hli]
+    ld [wMixP], a
+    ld a, [hli]
+    ld [wMixP+1], a
+    ld a, [de]
+    inc de
+    ld [wMixQ], a
+    ld a, [de]
+    inc de
+    ld [wMixQ+1], a
+    xor a
+    ld [wMixI], a
+.pxLoop
+    ; selector: BAYER4[(row&3)*4 + (i&3)] < ratio ?
+    ld a, [wMixRow]
+    and 3
+    add a
+    add a
+    ld c, a
+    ld a, [wMixI]
+    and 3
+    add c
+    ld e, a
+    ld d, 0
+    push hl
+    ld hl, BAYER4
+    add hl, de
+    ld a, [hl]
+    pop hl
+    cp b
+    jr c, .useQ
+    ; take P's top bits into the output, then shift all four planes
+    ld a, [wMixO]
+    add a
+    ld c, a
+    ld a, [wMixP]
+    add a
+    ld [wMixP], a
+    jr nc, .pLo
+    inc c
+.pLo
+    ld a, c
+    ld [wMixO], a
+    ld a, [wMixO+1]
+    add a
+    ld c, a
+    ld a, [wMixP+1]
+    add a
+    ld [wMixP+1], a
+    jr nc, .pHi
+    inc c
+.pHi
+    ld a, c
+    ld [wMixO+1], a
+    jr .shiftQ
+.useQ
+    ld a, [wMixO]
+    add a
+    ld c, a
+    ld a, [wMixQ]
+    add a
+    ld [wMixQ], a
+    jr nc, .qLo
+    inc c
+.qLo
+    ld a, c
+    ld [wMixO], a
+    ld a, [wMixO+1]
+    add a
+    ld c, a
+    ld a, [wMixQ+1]
+    add a
+    ld [wMixQ+1], a
+    jr nc, .qHi
+    inc c
+.qHi
+    ld a, c
+    ld [wMixO+1], a
+    ld a, [wMixP]
+    add a
+    ld [wMixP], a
+    ld a, [wMixP+1]
+    add a
+    ld [wMixP+1], a
+    jr .next
+.shiftQ
+    ld a, [wMixQ]
+    add a
+    ld [wMixQ], a
+    ld a, [wMixQ+1]
+    add a
+    ld [wMixQ+1], a
+.next
+    ld a, [wMixI]
+    inc a
+    ld [wMixI], a
+    cp 8
+    jp nz, .pxLoop
+    ; store the row's two bytes
+    ld a, [wMixRow]
+    add a
+    ld e, a
+    ld d, 0
+    push hl
+    ld hl, wMixBuf
+    add hl, de
+    ld a, [wMixO]
+    ld [hli], a
+    ld a, [wMixO+1]
+    ld [hl], a
+    pop hl
+    ld a, [wMixRow]
+    inc a
+    ld [wMixRow], a
+    cp 8
+    jp nz, .rowLoop
+    ret
+
 ; in: hl = src, de = dst, bc = count (must be a multiple of 8).
 ; Unrolled 8x: 3 instructions per byte instead of 7.
 CopyVRAM::
@@ -1178,3 +1367,11 @@ SkullTile:
     dw `03333300
     dw `00330300
     dw `00000000
+
+SECTION "Mixer scratch", WRAM0
+wMixP:   ds 2
+wMixQ:   ds 2
+wMixO:   ds 2
+wMixRow: db
+wMixI:   db
+wMixBuf: ds 16

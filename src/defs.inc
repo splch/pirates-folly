@@ -114,11 +114,22 @@ DEF TILE_HARBOR      EQU 120
 ; --- Sea-terrain visual variants (render-only) ---
 ; Picked by DecorateTile (world.asm) in the staging path; WorldTile still
 ; returns canonical IDs, so collision/chart/logic never see these.
-DEF TILE_SHALLOW2 EQU 121     ; foam-flecked shallow (near-coast band)
+DEF TILE_SHALLOW2 EQU 121     ; foam-flecked shallow (sand-approach band)
 DEF TILE_SAND2    EQU 122     ; shells-and-pebbles sand
 DEF TILE_GRASS2   EQU 123     ; flowered grass
 DEF TILE_FOREST2  EQU 124     ; sparse canopy
-DEF E_FOAM_MIN    EQU 144     ; shallow at/above this elevation gets foam
+
+; --- Synthesized transition tiles (tile mixing, LoadTiles) ---
+; 4x4 Bayer-dither blends of parent pairs, built at boot by MixTile.
+; 50/50 tiles are shared by both sides of their boundary.
+DEF TILE_DEEP_SH25 EQU 125    ; deep 75 / shallow 25   (e 128-129)
+DEF TILE_DEEP_SH50 EQU 126    ; deep/shallow 50/50     (e 130-131, 134-135)
+DEF TILE_SH_DEEP25 EQU 127    ; shallow 75 / deep 25   (e 132-133)
+DEF TILE_SH_SAND50 EQU 129    ; shallow/sand 50/50     (e 146-147, 150-151)
+DEF TILE_SAND_SH25 EQU 130    ; sand 75 / shallow 25   (e 148-149)
+DEF TILE_SAND_GR25 EQU 131    ; sand 75 / grass 25     (e 154-155)
+DEF TILE_SAND_GR50 EQU 132    ; sand/grass 50/50       (e 156-157, 160-161)
+DEF TILE_GR_SAND25 EQU 133    ; grass 75 / sand 25     (e 158-159)
 
 ; --- Port towns (S4) ---
 ; In a port district, four buildings spawn at hashed spots: tavern,
