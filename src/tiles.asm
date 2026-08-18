@@ -292,7 +292,7 @@ CGBInit::
     ldh [rBGPI], a
     ld c, LOW(rBGPD)
     ld hl, CGB_BGP
-    ld b, 16                       ; 16 words = 4 palettes x 4 colors
+    ld b, 32                       ; 32 words = 8 palettes x 4 colors
 .bgl
     call PalWord
     dec b
@@ -383,9 +383,13 @@ AGBFixColor:
 PUSHS "CGB palette data", ROMX, BANK[3]
 CGB_BGP:
     dw $7FFF, $5294, $2108, $0000  ; 0 UI: white/lt gray/dk gray/black
-    dw $7F94, $7A8A, $5964, $34A1  ; 1 sea: foam -> deep navy
+    dw $7F75, $6A6D, $4D67, $2CA3  ; 1 deep sea: foam -> navy
     dw $53BF, $32FC, $19F4, $0D0A  ; 2 sand: pale dune -> wet brown
-    dw $43D6, $22CA, $11A4, $14E9  ; 3 land: light green -> rock
+    dw $2F33, $1E6B, $1186, $0CE3  ; 3 grass: light meadow -> loam
+    dw $73D7, $5B0F, $4209, $2924  ; 4 shallow: lagoon -> teal
+    dw $1E09, $1565, $0CE3, $0882  ; 5 forest: canopy -> undergrowth
+    dw $6F7B, $4E31, $3129, $1C84  ; 6 mountain: snow -> slate
+    dw $7FFF, $5294, $2108, $0000  ; 7 spare (UI copy)
 CGB_OBP:
     dw $7FFF, $2A5F, $1150, $0000  ; obj0 player: white/tan/brown/black
     dw $7FFF, $5294, $0850, $0000  ; obj1 pirate: white/gray/dark red/black

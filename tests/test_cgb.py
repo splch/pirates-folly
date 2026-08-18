@@ -28,7 +28,7 @@ mem[0xFF68] = 0x80 | 8  # pal 1 color 0
 lo = mem[0xFF69]
 mem[0xFF68] = 0x80 | 9
 hi = mem[0xFF69]
-assert (hi << 8 | lo) == 0x7F94, f"sea pal {hi<<8|lo:#x}"
+assert (hi << 8 | lo) == 0x7F75, f"deep-sea pal {hi<<8|lo:#x}"
 # title -> editor -> sail
 pb.button_press("start"); pb.tick(); pb.button_release("start")
 for _ in range(10): pb.tick()
@@ -38,7 +38,7 @@ for _ in range(120): pb.tick()
 mem[0xFF4F] = 1
 attrs = bytes(mem[0x9800:0x9800 + 32*20])
 mem[0xFF4F] = 0
-sea = attrs.count(1); land = sum(attrs.count(i) for i in (2, 3))
+sea = attrs.count(1) + attrs.count(4); land = sum(attrs.count(i) for i in (2, 3, 5, 6))
 print(f"CGB attrmap: sea={sea} sand/land={land}")
 assert sea > 50, "no sea attrs streamed"
 # sail right for a while; streaming must keep attrs coming

@@ -459,15 +459,24 @@ WorldTile::
 ; ---------------------------------------------------------------------------
 
 PUSHS "Tile attr table", ROM0, ALIGN[8]
-; CGB palette per tile id: 0 = UI/ink, 1 = sea, 2 = sand, 3 = land.
+; CGB palette per tile id: 0 = UI/ink, 1 = deep sea, 2 = sand, 3 = grass,
+; 4 = shallow lagoon, 5 = forest, 6 = mountain.
 ATTR_TAB:
 FOR i, 256
     IF i == TILE_BLANK || i == TILE_PORT || i == TILE_LET_X || i == TILE_SKULL
         db 0
+    ELIF i == TILE_DEEP || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50
+        db 1
     ELIF i == TILE_DOCK || i == TILE_SAND || i == TILE_SAND2 || i == TILE_SH_SAND50 || i == TILE_SAND_SH25 || i == TILE_SAND_GR25 || i == TILE_SAND_GR50
         db 2
-    ELIF i < TILE_SAND || i == TILE_SHALLOW2 || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50 || i == TILE_SH_DEEP25
-        db 1
+    ELIF i == TILE_GRASS || i == TILE_GRASS2 || i == TILE_GR_SAND25
+        db 3
+    ELIF i == TILE_SHALLOW || i == TILE_SHALLOW2 || i == TILE_SH_DEEP25
+        db 4
+    ELIF i == TILE_FOREST || i == TILE_FOREST2
+        db 5
+    ELIF i == TILE_MOUNTAIN
+        db 6
     ELSE
         db 3
     ENDC

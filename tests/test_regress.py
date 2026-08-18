@@ -1022,12 +1022,20 @@ def r19_cgb_streaming_no_drops():
     press(pb, "a", 60)
     s16 = seed16(mem)
 
-    def want_attr(t):                    # mirrors world.asm TileAttr
-        if t in (0, 13):
+    def want_attr(t):                    # mirrors world.asm ATTR_TAB
+        if t in (0, 13, 32, 68):
             return 0
-        if t in (14, 3, 122, 129, 130, 131, 132):
+        if t in (1, 125, 126):
+            return 1
+        if t in (2, 121, 127):
+            return 4
+        if t in (3, 14, 122, 129, 130, 131, 132):
             return 2
-        return 1 if t < 3 or t in (121, 125, 126, 127) else 3
+        if t in (5, 124):
+            return 5
+        if t == 6:
+            return 6
+        return 3
 
     def check_window(tag):
         tx0, ty0 = w16(mem, "wTileX"), w16(mem, "wTileY")

@@ -253,16 +253,34 @@ ShoreTerrain:
 
 ; in: a = shore tile id; out: a = CGB palette attr. clobbers a only.
 ShoreTileAttr:
+    cp TILE_DEEP
+    jr z, .deep
+    cp TILE_SHALLOW
+    jr z, .shallow
     cp TILE_SAND
-    jr c, .sea
     jr z, .sand
-    ld a, 3                        ; grass/tree/rock/flower/mountain
+    cp TILE_SH_TREE
+    jr z, .tree
+    cp TILE_SH_ROCK
+    jr z, .rock
+    cp TILE_SH_MTN
+    jr z, .rock
+    ld a, 3                        ; grass/grass2/flower
     ret
-.sea
+.deep
     ld a, 1
+    ret
+.shallow
+    ld a, 4
     ret
 .sand
     ld a, 2
+    ret
+.tree
+    ld a, 5
+    ret
+.rock
+    ld a, 6
     ret
 
 ; in: a = shore tile; out: a = 1 iff the player can walk on it
