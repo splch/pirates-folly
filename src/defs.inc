@@ -135,6 +135,9 @@ DEF TILE_GR_SAND25 EQU 133    ; grass 75 / sand 25     (e 158-159)
 DEF TILE_COMPASS   EQU 134    ; compass rose (chart header)
 DEF TILE_GULL      EQU 135    ; gull arcs (title screen)
 DEF TILE_FRAME     EQU 136    ; thin rule (port screen frame)
+DEF TILE_DEEP2     EQU 137    ; second animated deep-water variant
+DEF TILE_SHALLOW3  EQU 138    ; second animated shallow-water variant
+DEF TILE_EMBLEM    EQU 139    ; 139-154: title skull & crossbones (4x4)
 
 ; --- Port towns (S4) ---
 ; In a port district, four buildings spawn at hashed spots: tavern,

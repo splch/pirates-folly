@@ -248,6 +248,11 @@ MainLoop:
     and PADF_SELECT
     call nz, ToggleMute
 .noMute
+    ld a, [wState]
+    cp STATE_TITLE
+    jr nz, .noTitleWater
+    call AnimWater                 ; the title sea is alive
+.noTitleWater
     call UpdateSound
     ld a, [wState]
     cp STATE_TITLE
@@ -733,8 +738,8 @@ InitNewGame:
 ; LCD-off draw of the title. Sea rows + a ship, then text.
 DrawTitleScreen::
     call DrawSeedScreen            ; clear to blank (LCD off)
-    ; sea at the bottom: two deep rows, then two shallow rows (a gradient
-    ; into the foreground, like water shelving toward the viewer)
+    ; four deep-sea rows at the bottom (animated: MainLoop runs
+    ; AnimWater on the title screen)
     ld hl, $9800 + 14 * 32
     ld b, 64
 .sea
@@ -744,47 +749,53 @@ DrawTitleScreen::
     jr nz, .sea
     ld b, 64
 .shal
-    ld a, TILE_SHALLOW
+    ld a, TILE_DEEP2
     ld [hli], a
     dec b
     jr nz, .shal
     ; a lone ship on the horizon
     ld a, TILE_SHIP_S
     ld [$9800 + 13 * 32 + 9], a
-    ; gulls overhead
+    ; skull & crossbones emblem, rows 1-4 cols 8-11 (tiles 139-154)
+    ld hl, $9800 + 1 * 32 + 8
+    ld a, TILE_EMBLEM
+    ld c, 4                        ; tile rows
+.embRow
+    ld b, 4                        ; tile cols
+.embCol
+    ld [hli], a
+    inc a
+    dec b
+    jr nz, .embCol
+    push af
+    ld a, l
+    add 28                         ; next tilemap row, same column
+    ld l, a
+    jr nc, .embNoCy
+    inc h
+.embNoCy
+    pop af
+    dec c
+    jr nz, .embRow
+    ; gulls flanking the emblem
     ld a, TILE_GULL
-    ld [$9800 + 2 * 32 + 3], a
-    ld [$9800 + 2 * 32 + 15], a
-    ; double rules above and below the title block
-    ld hl, $9800 + 3 * 32 + 2
-    ld b, 16
-.rule1
-    ld a, TILE_FRAME
-    ld [hli], a
-    dec b
-    jr nz, .rule1
-    ld hl, $9800 + 10 * 32 + 2
-    ld b, 16
-.rule2
-    ld a, TILE_FRAME
-    ld [hli], a
-    dec b
-    jr nz, .rule2
+    ld [$9800 + 5 * 32 + 4], a
+    ld [$9800 + 5 * 32 + 14], a
     ; compass roses flanking the title
     ld a, TILE_COMPASS
-    ld [$9800 + 4 * 32 + 1], a
-    ld [$9800 + 4 * 32 + 18], a
+    ld [$9800 + 6 * 32 + 1], a
+    ld [$9800 + 6 * 32 + 18], a
     ld hl, StrTitle
-    ld de, $9800 + 4 * 32 + 3
+    ld de, $9800 + 6 * 32 + 3
     call PrintStr
     ld hl, StrTitleSub1
-    ld de, $9800 + 6 * 32 + 4
+    ld de, $9800 + 8 * 32 + 4
     call PrintStr
     ld hl, StrTitleSub2
-    ld de, $9800 + 7 * 32 + 3
+    ld de, $9800 + 9 * 32 + 3
     call PrintStr
     ld hl, StrTitleSub3
-    ld de, $9800 + 9 * 32 + 2
+    ld de, $9800 + 10 * 32 + 2
     call PrintStr
     ld hl, StrPressStart
     ld de, $9800 + 12 * 32 + 4

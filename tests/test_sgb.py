@@ -59,7 +59,7 @@ tx = mem2[syms["wTileX"]] | mem2[syms["wTileX"] + 1] << 8
 ty = mem2[syms["wTileY"]] | mem2[syms["wTileY"] + 1] << 8
 vals = {mem2[0x9800 + ((ty + r) & 31) * 32 + ((tx + c) & 31)]
         for r in range(19) for c in range(21)}
-assert vals <= {1, 2, 3, 4, 5, 6, 14, 121, 122, 123, 124, 125, 126, 127, 129, 130, 131, 132, 133}, \
+assert vals <= {1, 2, 3, 4, 5, 6, 14, 121, 122, 123, 124, 125, 126, 127, 129, 130, 131, 132, 133, 137, 138}, \
             f"transfer garbage in view: {vals}"
 assert 1 in vals, "no deep-water tiles after redraw"
 print("forced-SGB: transfer ran, sea screen rebuilt, sailing OK")

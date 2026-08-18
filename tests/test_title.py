@@ -13,8 +13,8 @@ pb = PyBoy(RUN, window="null")
 pb.set_emulation_speed(0)
 mem = pb.memory
 for _ in range(120): pb.tick()
-# title text "PIRATES FOLLY" = tiles at row 4 col 3
-row = [mem[0x9800 + 4*32 + 3 + i] for i in range(13)]
+# title text "PIRATES FOLLY" = tiles at row 6 col 3
+row = [mem[0x9800 + 6*32 + 3 + i] for i in range(13)]
 assert row == [55,48,57,40,59,44,58,39,45,54,51,51,64], f"title row {row}"
 # ship tile on row 13 col 9
 assert mem[0x9800 + 13*32 + 9] == 10, "no ship on title"

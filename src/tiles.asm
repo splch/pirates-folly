@@ -59,6 +59,14 @@ LoadTiles::
     ld de, $8000 + 134 * 16
     ld bc, 3 * 16
     call CopyVRAM
+    ld hl, WaterFrames + 32        ; initial phase-0 pixels for the
+    ld de, $8000 + 137 * 16        ; variant waters (AnimWater syncs them)
+    ld bc, 32
+    call CopyVRAM
+    ld hl, EmblemTiles
+    ld de, $8000 + TILE_EMBLEM * 16
+    ld bc, 16 * 16
+    call CopyVRAM
     ; --- synthesize the transition tiles (Bayer-dither mixes) ---
     ld hl, TerrainTiles + 16         ; DEEP
     ld de, TerrainTiles + 32         ; SHALLOW
@@ -384,6 +392,137 @@ AGBFixColor:
     add 8
     ret
 
+; 139-154 TILE_EMBLEM: skull & crossbones, 4x4 tiles (title screen)
+EmblemTiles:
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000003
+    dw `00000033
+    dw `00000033
+    dw `00000033
+    dw `00000000
+    dw `00033333
+    dw `03333333
+    dw `33333333
+    dw `33333333
+    dw `30000333
+    dw `30000333
+    dw `30000333
+    dw `00000000
+    dw `33333000
+    dw `33333330
+    dw `33333333
+    dw `33333333
+    dw `33300003
+    dw `33300003
+    dw `33300003
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `30000000
+    dw `33000000
+    dw `33000000
+    dw `33000000
+    dw `00000033
+    dw `00000003
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `33333333
+    dw `33333333
+    dw `33333330
+    dw `33333330
+    dw `03333333
+    dw `03333033
+    dw `00333033
+    dw `00033333
+    dw `33333333
+    dw `33333333
+    dw `03333333
+    dw `03333333
+    dw `33333330
+    dw `03303330
+    dw `03303300
+    dw `33333000
+    dw `33000000
+    dw `30000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00003330
+    dw `00003333
+    dw `00003333
+    dw `00000033
+    dw `00000033
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `33000000
+    dw `33330000
+    dw `33333300
+    dw `00333333
+    dw `00003333
+    dw `00033333
+    dw `00000003
+    dw `00000003
+    dw `00000033
+    dw `00003333
+    dw `00333333
+    dw `33333300
+    dw `33330000
+    dw `33333000
+    dw `33000000
+    dw `33000000
+    dw `33330000
+    dw `33330000
+    dw `03330000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00033303
+    dw `00033333
+    dw `00033333
+    dw `00000333
+    dw `00000333
+    dw `00000000
+    dw `00000000
+    dw `03333333
+    dw `33333000
+    dw `33300000
+    dw `30000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `33333330
+    dw `00033333
+    dw `00000333
+    dw `00000003
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `33300000
+    dw `33300000
+    dw `33333000
+    dw `03333000
+    dw `00333000
+    dw `00000000
+    dw `00000000
+
 PUSHS "CGB palette data", ROMX, BANK[3]
 CGB_BGP:
     dw $7FFF, $5294, $2108, $0000  ; 0 UI: white/lt gray/dk gray/black
@@ -399,8 +538,9 @@ CGB_OBP:
     dw $7FFF, $5294, $0850, $0000  ; obj1 pirate: white/gray/dark red/black
 POPS
 
-; 4-phase water animation: [deep][shallow] per phase, 16 bytes each.
-; SailVBlank copies one 32-byte pair over tiles 1-2 every 16 frames.
+; 4-phase water animation: [deep][shallow][deep2][shallow3] per phase,
+; 16 bytes each. AnimWater copies one 64-byte phase over tiles 1-2 and
+; 137-138 every 16 frames.
 ; Every row is 4-periodic (abcdabcd), so drifting right one pixel per
 ; phase loops exactly (rotation == shift across tile boundaries).
 ; ROM0: AnimWater (also ROM0) reads it for both sailing and shore mode.
@@ -425,7 +565,26 @@ WaterFrames::
     dw `10011001
     dw `20022002
     dw `00000000
-    ; --- phase 1 (drifted right 1 px) ---
+    ; deep2
+    dw `00000000
+    dw `00000000
+    dw `00110011
+    dw `00220022
+    dw `00000000
+    dw `00000000
+    dw `11001100
+    dw `00000000
+    ; shallow3
+    dw `00000000
+    dw `10011001
+    dw `20022002
+    dw `00010001
+    dw `00000000
+    dw `01100110
+    dw `02200220
+    dw `00100010
+    ; --- phase 1 ---
+    ; deep
     dw `00000000
     dw `00110011
     dw `00220022
@@ -434,6 +593,7 @@ WaterFrames::
     dw `11001100
     dw `22002200
     dw `00000000
+    ; shallow
     dw `00010001
     dw `00110011
     dw `00220022
@@ -442,7 +602,26 @@ WaterFrames::
     dw `11001100
     dw `22002200
     dw `00000000
+    ; deep2
+    dw `00000000
+    dw `00000000
+    dw `10011001
+    dw `20022002
+    dw `00000000
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    ; shallow3
+    dw `00000000
+    dw `11001100
+    dw `22002200
+    dw `10001000
+    dw `00000000
+    dw `00110011
+    dw `00220022
+    dw `00010001
     ; --- phase 2 ---
+    ; deep
     dw `00000000
     dw `10011001
     dw `20022002
@@ -451,6 +630,7 @@ WaterFrames::
     dw `01100110
     dw `02200220
     dw `00000000
+    ; shallow
     dw `10001000
     dw `10011001
     dw `20022002
@@ -459,7 +639,26 @@ WaterFrames::
     dw `01100110
     dw `02200220
     dw `00000000
+    ; deep2
+    dw `00000000
+    dw `00000000
+    dw `11001100
+    dw `22002200
+    dw `00000000
+    dw `00000000
+    dw `00110011
+    dw `00000000
+    ; shallow3
+    dw `00000000
+    dw `01100110
+    dw `02200220
+    dw `01000100
+    dw `00000000
+    dw `10011001
+    dw `20022002
+    dw `10001000
     ; --- phase 3 ---
+    ; deep
     dw `00000000
     dw `11001100
     dw `22002200
@@ -468,6 +667,7 @@ WaterFrames::
     dw `00110011
     dw `00220022
     dw `00000000
+    ; shallow
     dw `01000100
     dw `11001100
     dw `22002200
@@ -476,6 +676,24 @@ WaterFrames::
     dw `00110011
     dw `00220022
     dw `00000000
+    ; deep2
+    dw `00000000
+    dw `00000000
+    dw `01100110
+    dw `02200220
+    dw `00000000
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    ; shallow3
+    dw `00000000
+    dw `00110011
+    dw `00220022
+    dw `00100010
+    dw `00000000
+    dw `11001100
+    dw `22002200
+    dw `01000100
 POPS
 
 ; tiles 13-14: port marker (chart) + dock planks (in-world)
@@ -489,54 +707,55 @@ PortTiles:
     dw `03222230
     dw `03232330
     dw `03333330
-    ; 14 TILE_DOCK: plank pier — dark boards with nail heads, water gaps
+    ; 14 TILE_DOCK: wooden pier — plank bands, nail heads, dark seams
+    dw `22222222
+    dw `23223223
+    dw `22222222
     dw `33333333
-    dw `32032303
+    dw `22222222
+    dw `22322322
+    dw `22222222
     dw `33333333
-    dw `00000000
-    dw `33333333
-    dw `30323032
-    dw `33333333
-    dw `00000000
 
 ; 8x8 ship, one tile per heading: N, E, S, W (tiles 8-11)
-; light sail (1), deck (2), hull outline (3); pointy bow, square stern
+; light sail (1), deck (2), hull outline (3); pointy bow, square stern,
+; sail billows full amidships
 ShipTiles:
     ; N
     dw `00033000
-    dw `00322300
-    dw `03222230
+    dw `00311300
+    dw `03111130
+    dw `03111130
+    dw `03111130
     dw `03211230
-    dw `03211230
-    dw `03222230
     dw `03222230
     dw `00333300
     ; E
     dw `00000000
-    dw `03333000
-    dw `32222230
+    dw `03333300
+    dw `32222223
     dw `32111113
     dw `32111113
-    dw `32222230
-    dw `03333000
+    dw `32222223
+    dw `03333300
     dw `00000000
     ; S
     dw `00333300
     dw `03222230
-    dw `03222230
     dw `03211230
-    dw `03211230
-    dw `03222230
-    dw `00322300
+    dw `03111130
+    dw `03111130
+    dw `03111130
+    dw `00311300
     dw `00033000
     ; W
     dw `00000000
-    dw `00033330
-    dw `03222223
+    dw `00333330
+    dw `32222223
     dw `31111123
     dw `31111123
-    dw `03222223
-    dw `00033330
+    dw `32222223
+    dw `00333330
     dw `00000000
 
 ; Extra HUD letters: X, Y, S, P (tiles 32-35) — same glyphs as 63/64/58/55
@@ -893,15 +1112,15 @@ TerrainTiles:
     dw `10011001
     dw `20022002
     dw `00000000
-; 3 TILE_SAND — warm grain with scattered shell flecks
+; 3 TILE_SAND — smooth beach with clustered pebbles and a rare shell
     dw `11111111
-    dw `12111211
+    dw `11211111
+    dw `12121211
+    dw `11211111
     dw `11111111
-    dw `11211211
+    dw `11111211
+    dw `13112111
     dw `11111121
-    dw `12111211
-    dw `11131111
-    dw `11211121
 ; 4 TILE_GRASS — meadow with blade tufts and light flecks
     dw `22222222
     dw `22322232
@@ -920,12 +1139,12 @@ TerrainTiles:
     dw `23333332
     dw `33333333
     dw `33233323
-; 6 TILE_MOUNTAIN — a single snow-capped peak, edges seamless
+; 6 TILE_MOUNTAIN — shaded crag: sunlit west face, shadowed east face
     dw `22222222
-    dw `22212222
-    dw `22313222
-    dw `23212232
-    dw `23222232
+    dw `22213222
+    dw `22113322
+    dw `22113322
+    dw `21133332
     dw `22222222
     dw `22222222
     dw `22222222
@@ -951,15 +1170,15 @@ VariantTiles:
     dw `10011001
     dw `20022002
     dw `00000010
-; 122 TILE_SAND2 — shells and pebbles
+; 122 TILE_SAND2 — shells and pebbles (different clustering)
     dw `11111111
-    dw `12111211
-    dw `11131111
-    dw `11312111
-    dw `11111121
-    dw `12111211
-    dw `11131113
-    dw `11211121
+    dw `11111211
+    dw `11212111
+    dw `11111211
+    dw `11121111
+    dw `12131211
+    dw `11121111
+    dw `11111113
 ; 123 TILE_GRASS2 — flowered tufts
     dw `22222222
     dw `22322232

@@ -76,8 +76,11 @@ for _ in range(150):
 assert fired, "enemy never fired"
 print("enemy fired: OK")
 
-# player fires at enemy (A at sea, no beach nearby)
+# player fires at enemy (A at sea, no beach nearby). Hold A across two
+# frames: input is sampled mid-frame, so a 1-tick press can straddle the
+# sampling phase on builds with heavier VBlank work.
 pb.button_press("a")
+pb.tick()
 pb.tick()
 pb.button_release("a")
 pb.tick()

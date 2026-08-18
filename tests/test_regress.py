@@ -135,17 +135,17 @@ def shown_tile(wx, wy, s16):
 # plain-terrain variants come from the tile's lattice-cell hash.
 def decorate_tile(wx, wy, t, s16):
     e = elevation(wx, wy, s16)
+    mix = lathash(wx >> 3, wy >> 3, s16)
     if t == 1:                              # deep
         if e >= 130: return 126
         if e >= 128: return 125
-        return t
+        return 137 if mix & 4 else t        # TILE_DEEP2 variant
     if t == 2:                              # shallow
         if e >= 146: return 129
         if e >= 144: return 121
-        if e >= 136: return t
+        if e >= 136: return 138 if mix & 8 else t  # TILE_SHALLOW3
         if e >= 134: return 126
         return 127
-    mix = lathash(wx >> 3, wy >> 3, s16)
     if t == 3:                              # sand
         if e >= 156: return 132
         if e >= 154: return 131
@@ -1025,16 +1025,16 @@ def r19_cgb_streaming_no_drops():
     def want_attr(t):                    # mirrors world.asm ATTR_TAB
         if t in (0, 13, 32, 68):
             return 0
-        if t in (1, 125, 126):
+        if t in (1, 125, 126, 137):
             return 1
-        if t in (2, 121, 127):
+        if t in (2, 121, 127, 138):
             return 4
         if t in (3, 14, 122, 129, 130, 131, 132):
             return 2
         if t in (5, 124):
             return 5
         if t == 6:
-            return 6
+            return 3
         return 3
 
     def check_window(tag):

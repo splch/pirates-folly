@@ -303,7 +303,7 @@ DecorateTile:
     ret
 .dKeep
     ld a, TILE_DEEP
-    ret
+    jp .hasMix
 .d25
     ld a, TILE_DEEP_SH25
     ret
@@ -321,7 +321,7 @@ DecorateTile:
     ret
 .sKeep
     ld a, TILE_SHALLOW
-    ret
+    jp .hasMix
 .s25
     ld a, TILE_SH_DEEP25
     ret
@@ -364,6 +364,10 @@ DecorateTile:
     add hl, de
     ld b, [hl]                      ; b = LatHash(cell ix, cell iy)
     ld a, c
+    cp TILE_DEEP
+    jr z, .deep2
+    cp TILE_SHALLOW
+    jr z, .shallow3
     cp TILE_SAND
     jr z, .sand2
     cp TILE_GRASS
@@ -379,6 +383,18 @@ DecorateTile:
     and 4                           ; 25% shells-and-pebbles
     jr z, .keep
     ld a, TILE_SAND2
+    ret
+.deep2
+    ld a, b
+    and 4                           ; 25% alternate deep waves
+    jr z, .keep
+    ld a, TILE_DEEP2
+    ret
+.shallow3
+    ld a, b
+    and 8                           ; 50% alternate shallows
+    jr z, .keep
+    ld a, TILE_SHALLOW3
     ret
 .grass2
     ld a, b
@@ -465,18 +481,18 @@ ATTR_TAB:
 FOR i, 256
     IF i == TILE_BLANK || i == TILE_PORT || i == TILE_LET_X || i == TILE_SKULL
         db 0
-    ELIF i == TILE_DEEP || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50
+    ELIF i == TILE_DEEP || i == TILE_DEEP_SH25 || i == TILE_DEEP_SH50 || i == TILE_DEEP2
         db 1
     ELIF i == TILE_DOCK || i == TILE_SAND || i == TILE_SAND2 || i == TILE_SH_SAND50 || i == TILE_SAND_SH25 || i == TILE_SAND_GR25 || i == TILE_SAND_GR50
         db 2
     ELIF i == TILE_GRASS || i == TILE_GRASS2 || i == TILE_GR_SAND25
         db 3
-    ELIF i == TILE_SHALLOW || i == TILE_SHALLOW2 || i == TILE_SH_DEEP25
+    ELIF i == TILE_SHALLOW || i == TILE_SHALLOW2 || i == TILE_SH_DEEP25 || i == TILE_SHALLOW3
         db 4
     ELIF i == TILE_FOREST || i == TILE_FOREST2
         db 5
     ELIF i == TILE_MOUNTAIN
-        db 6
+        db 3
     ELSE
         db 3
     ENDC
