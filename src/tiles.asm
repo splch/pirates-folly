@@ -549,151 +549,151 @@ WaterFrames::
     ; --- phase 0 ---
     ; deep
     dw `00000000
+    dw `00000000
     dw `01100110
-    dw `02200220
+    dw `00000000
     dw `00000000
     dw `00000000
     dw `10011001
-    dw `20022002
     dw `00000000
     ; shallow
-    dw `00100010
+    dw `00000000
+    dw `00000000
     dw `01100110
-    dw `02200220
     dw `00000000
     dw `01000100
+    dw `00000000
     dw `10011001
-    dw `20022002
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
-    dw `00110011
-    dw `00220022
     dw `00000000
+    dw `00110011
     dw `00000000
     dw `11001100
     dw `00000000
+    dw `00000000
     ; shallow3
     dw `00000000
-    dw `10011001
-    dw `20022002
-    dw `00010001
     dw `00000000
-    dw `01100110
-    dw `02200220
-    dw `00100010
+    dw `00000000
+    dw `00110011
+    dw `00000000
+    dw `11001100
+    dw `00000000
+    dw `00010001
     ; --- phase 1 ---
     ; deep
     dw `00000000
+    dw `00000000
     dw `00110011
-    dw `00220022
+    dw `00000000
     dw `00000000
     dw `00000000
     dw `11001100
-    dw `22002200
     dw `00000000
     ; shallow
-    dw `00010001
+    dw `00000000
+    dw `00000000
     dw `00110011
-    dw `00220022
     dw `00000000
     dw `00100010
+    dw `00000000
     dw `11001100
-    dw `22002200
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
-    dw `10011001
-    dw `20022002
     dw `00000000
+    dw `10011001
     dw `00000000
     dw `01100110
     dw `00000000
+    dw `00000000
     ; shallow3
     dw `00000000
-    dw `11001100
-    dw `22002200
-    dw `10001000
     dw `00000000
-    dw `00110011
-    dw `00220022
-    dw `00010001
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    dw `10001000
     ; --- phase 2 ---
     ; deep
     dw `00000000
+    dw `00000000
     dw `10011001
-    dw `20022002
+    dw `00000000
     dw `00000000
     dw `00000000
     dw `01100110
-    dw `02200220
     dw `00000000
     ; shallow
-    dw `10001000
+    dw `00000000
+    dw `00000000
     dw `10011001
-    dw `20022002
     dw `00000000
     dw `00010001
+    dw `00000000
     dw `01100110
-    dw `02200220
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
-    dw `11001100
-    dw `22002200
     dw `00000000
+    dw `11001100
     dw `00000000
     dw `00110011
     dw `00000000
+    dw `00000000
     ; shallow3
     dw `00000000
-    dw `01100110
-    dw `02200220
-    dw `01000100
     dw `00000000
-    dw `10011001
-    dw `20022002
-    dw `10001000
+    dw `00000000
+    dw `11001100
+    dw `00000000
+    dw `00110011
+    dw `00000000
+    dw `01000100
     ; --- phase 3 ---
     ; deep
     dw `00000000
+    dw `00000000
     dw `11001100
-    dw `22002200
+    dw `00000000
     dw `00000000
     dw `00000000
     dw `00110011
-    dw `00220022
     dw `00000000
     ; shallow
-    dw `01000100
+    dw `00000000
+    dw `00000000
     dw `11001100
-    dw `22002200
     dw `00000000
     dw `10001000
+    dw `00000000
     dw `00110011
-    dw `00220022
     dw `00000000
     ; deep2
     dw `00000000
     dw `00000000
-    dw `01100110
-    dw `02200220
     dw `00000000
+    dw `01100110
     dw `00000000
     dw `10011001
     dw `00000000
+    dw `00000000
     ; shallow3
     dw `00000000
-    dw `00110011
-    dw `00220022
-    dw `00100010
     dw `00000000
-    dw `11001100
-    dw `22002200
-    dw `01000100
+    dw `00000000
+    dw `01100110
+    dw `00000000
+    dw `10011001
+    dw `00000000
+    dw `00100010
 POPS
 
 ; tiles 13-14: port marker (chart) + dock planks (in-world)
@@ -707,15 +707,15 @@ PortTiles:
     dw `03222230
     dw `03232330
     dw `03333330
-    ; 14 TILE_DOCK: wooden pier — plank bands, nail heads, dark seams
+    ; 14 TILE_DOCK: wooden pier — plank bands, dark seams, one nail each
     dw `22222222
-    dw `23223223
-    dw `22222222
+    dw `22322222
     dw `33333333
     dw `22222222
-    dw `22322322
-    dw `22222222
+    dw `22222232
     dw `33333333
+    dw `22222222
+    dw `22322222
 
 ; 8x8 ship, one tile per heading: N, E, S, W (tiles 8-11)
 ; light sail (1), deck (2), hull outline (3); pointy bow, square stern,
@@ -1094,51 +1094,51 @@ TerrainTiles:
     dw `00000000
     dw `00000000
     dw `00000000
-; 1 TILE_DEEP — open water: two-tone wavelets (WaterFrames phase 0)
+; 1 TILE_DEEP — open water: sparse single-tone wavelets (WaterFrames phase 0)
+    dw `00000000
     dw `00000000
     dw `01100110
-    dw `02200220
+    dw `00000000
     dw `00000000
     dw `00000000
     dw `10011001
-    dw `20022002
     dw `00000000
-; 2 TILE_SHALLOW — wavelets + glints: visibly busier (WaterFrames phase 0)
-    dw `00100010
+; 2 TILE_SHALLOW — wavelets + a glint row (WaterFrames phase 0)
+    dw `00000000
+    dw `00000000
     dw `01100110
-    dw `02200220
     dw `00000000
     dw `01000100
-    dw `10011001
-    dw `20022002
     dw `00000000
-; 3 TILE_SAND — smooth beach with clustered pebbles and a rare shell
+    dw `10011001
+    dw `00000000
+; 3 TILE_SAND — flat beach, two pebble clusters
     dw `11111111
-    dw `11211111
-    dw `12121211
-    dw `11211111
     dw `11111111
-    dw `11111211
-    dw `13112111
-    dw `11111121
-; 4 TILE_GRASS — meadow with blade tufts and light flecks
+    dw `11221111
+    dw `11221111
+    dw `11111111
+    dw `11111122
+    dw `11111122
+    dw `11111111
+; 4 TILE_GRASS — calm meadow, two blade tufts
     dw `22222222
-    dw `22322232
-    dw `22122222
-    dw `22232221
-    dw `23222322
-    dw `22212232
+    dw `22222222
     dw `22322222
-    dw `22223222
-; 5 TILE_FOREST — canopy clumps over mid-tone undergrowth
-    dw `22332233
-    dw `23333323
-    dw `33333333
-    dw `33322333
-    dw `22333322
-    dw `23333332
-    dw `33333333
-    dw `33233323
+    dw `22322222
+    dw `22222222
+    dw `22222232
+    dw `22222232
+    dw `22222222
+; 5 TILE_FOREST — two bold canopy clumps on undergrowth
+    dw `22222222
+    dw `22333222
+    dw `23333322
+    dw `23333222
+    dw `22222223
+    dw `22222333
+    dw `22222333
+    dw `22222233
 ; 6 TILE_MOUNTAIN — shaded crag: sunlit west face, shadowed east face
     dw `22222222
     dw `22213222
@@ -1162,41 +1162,41 @@ TerrainTiles:
 ; Render-only substitutes for the canonical tiles 2-5.
 VariantTiles:
 ; 121 TILE_SHALLOW2 — foam-flecked shallow (near-coast band)
-    dw `00100010
+    dw `00000000
+    dw `00000000
     dw `01100110
-    dw `02200220
     dw `00010000
     dw `01000100
+    dw `00000000
     dw `10011001
-    dw `20022002
     dw `00000010
-; 122 TILE_SAND2 — shells and pebbles (different clustering)
+; 122 TILE_SAND2 — pebbles in a different spot
     dw `11111111
-    dw `11111211
-    dw `11212111
-    dw `11111211
-    dw `11121111
-    dw `12131211
-    dw `11121111
-    dw `11111113
-; 123 TILE_GRASS2 — flowered tufts
+    dw `11122111
+    dw `11122111
+    dw `11111111
+    dw `11111111
+    dw `12211111
+    dw `12211111
+    dw `11111111
+; 123 TILE_GRASS2 — tufts elsewhere, one light fleck
     dw `22222222
-    dw `22322232
-    dw `22122122
-    dw `21232221
-    dw `23222322
-    dw `22212232
-    dw `22322212
+    dw `23222222
+    dw `23222222
+    dw `22222222
+    dw `22222222
     dw `22223222
-; 124 TILE_FOREST2 — sparse canopy, gaps of undergrowth
-    dw `22232222
-    dw `22333222
-    dw `23333322
-    dw `22333223
-    dw `22232233
-    dw `22222233
-    dw `22232222
-    dw `22333222
+    dw `22223221
+    dw `22222222
+; 124 TILE_FOREST2 — one sparse canopy clump
+    dw `22222222
+    dw `22222222
+    dw `22332222
+    dw `23333222
+    dw `23322222
+    dw `22222222
+    dw `22222222
+    dw `22222222
 
 ; tiles 134-136: screen-dressing glyphs
 ScreenTiles:
@@ -1382,23 +1382,23 @@ HexFont:
 ; Shore mode art lives in ROM0: LoadTiles reads it with any bank mapped.
 SECTION "Shore tile data", ROM0
 ShoreTiles:
-; 96 TILE_SH_GRASS — fine meadow speckle
+; 96 TILE_SH_GRASS — calm meadow, two tuft marks
     dw `22222222
-    dw `22232222
-    dw `22122212
     dw `22222222
-    dw `23222222
+    dw `22322222
+    dw `22222222
     dw `22222232
-    dw `22212221
     dw `22222222
-; 97 TILE_SH_GRASS2 — grassy tufts
+    dw `22222222
+    dw `22222222
+; 97 TILE_SH_GRASS2 — tufts elsewhere
     dw `22222222
     dw `22322232
+    dw `22222222
+    dw `22222222
     dw `23222222
-    dw `22232222
-    dw `22222232
-    dw `22322222
-    dw `22223222
+    dw `22222222
+    dw `22222223
     dw `22222222
 ; 98 TILE_SH_TREE — round canopy with highlight + trunk (blocks movement)
     dw `00233200
@@ -1418,15 +1418,15 @@ ShoreTiles:
     dw `32222223
     dw `03222230
     dw `00333300
-; 100 TILE_SH_FLOWER — meadow flowers (walkable)
+; 100 TILE_SH_FLOWER — one flower, one bud (walkable)
     dw `22222222
     dw `22212222
     dw `22121222
     dw `22212222
     dw `22222222
-    dw `22122212
-    dw `21212212
-    dw `22122222
+    dw `22222222
+    dw `22221212
+    dw `22222222
 ; 101 TILE_SH_MTN — snow-capped crag (blocks movement)
     dw `00000000
     dw `00033000

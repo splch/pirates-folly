@@ -777,14 +777,6 @@ DrawTitleScreen::
     pop af
     dec c
     jr nz, .embRow
-    ; gulls flanking the emblem
-    ld a, TILE_GULL
-    ld [$9800 + 5 * 32 + 4], a
-    ld [$9800 + 5 * 32 + 14], a
-    ; compass roses flanking the title
-    ld a, TILE_COMPASS
-    ld [$9800 + 6 * 32 + 1], a
-    ld [$9800 + 6 * 32 + 18], a
     ld hl, StrTitle
     ld de, $9800 + 6 * 32 + 3
     call PrintStr
@@ -793,9 +785,6 @@ DrawTitleScreen::
     call PrintStr
     ld hl, StrTitleSub2
     ld de, $9800 + 9 * 32 + 3
-    call PrintStr
-    ld hl, StrTitleSub3
-    ld de, $9800 + 10 * 32 + 2
     call PrintStr
     ld hl, StrPressStart
     ld de, $9800 + 12 * 32 + 4
@@ -822,5 +811,4 @@ StrBest:     db "BEST ", 0
 StrTitle:    db "PIRATES FOLLY", 0
 StrTitleSub1: db "A PROCEDURAL", 0
 StrTitleSub2: db "PIRATE VOYAGE", 0
-StrTitleSub3: db "65536 SEAS AWAIT", 0
 StrPressStart: db "PRESS START", 0
