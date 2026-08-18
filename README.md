@@ -32,7 +32,7 @@ then flash it to a cartridge or open it in any Game Boy emulator
 |---|---|---|---|
 | D-pad | Sail (momentum — ease off!) | Menus | Edit seed digits |
 | A | Dock at a beach / fire cannons / **go ashore** (with the dinghy) | Confirm / buy (RIGHT) | New game (seed screen); ashore: dig the X / reboard |
-| B | Quit to seed screen (press twice; unsaved) | Back / set sail | — |
+| B | Quit to seed screen (press twice; unsaved) | Back / set sail | Fire the pistol (ashore) |
 | SELECT | Mute sound | Mute sound | Re-roll the seed (seed screen) |
 | START | **The chart** (your map fills in as you explore) | — | Continue a saved game |
 
@@ -52,8 +52,12 @@ then flash it to a cartridge or open it in any Game Boy emulator
   and a **dinghy** for going ashore.
 - **Go ashore.** With the dinghy aboard, press **A** beside any beach to land
   and explore the island on foot — the *same* world at twice the zoom, so
-  every coastline is exactly where the chart says. Walk back to the dinghy
-  and press **A** to reboard.
+  every coastline is exactly where the chart says. Dig up buried chests,
+  salvage washed-up cargo, and read the grim landmarks of those who came
+  before — all seeded per chart cell, with dug sites staying dug (saved).
+  Snakes and skeletons guard the islands: press **B** for the pistol, and
+  watch your hearts — at zero, the island takes a toll in gold and drags
+  you back to the dinghy. Walk back to the dinghy and press **A** to reboard.
 - **Win, and keep sailing.** The Treasure's curse: after victory, charted
   waters roll encounters at full rate — a won sea never calms.
 - **Digging.** An isle's fragment only comes out of the ground once its

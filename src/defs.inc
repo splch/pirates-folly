@@ -103,6 +103,9 @@ DEF TILE_SITE_DEBRIS EQU 110
 DEF TILE_SITE_GIBBET EQU 111
 DEF TILE_SITE_SKULL  EQU 112
 DEF TILE_DIGX        EQU 113    ; dig site: X marks the spot
+DEF TILE_SNAKE       EQU 114    ; shore foes (S3)
+DEF TILE_SKEL        EQU 115
+DEF TILE_COIN        EQU 116    ; dropped by slain skeletons
 
 ; --- Shore sites (hash-placed loot & lore landmarks) ---
 ; Two consumable slots per chart cell (dug bitmap: bit = cell*2+slot);
@@ -118,6 +121,20 @@ DEF SITE_SALT1   EQU $A23E
 DEF SITE_SALT2   EQU $5A3C
 DEF LAND_SALT    EQU $7B1E
 DEF DIG_SALT     EQU $D1C6      ; isle dig-site placement (xored with the isle index)
+
+; --- Shore foes (S3) ---
+; Two spawn slots per chart cell, hash-placed like the loot sites. Snakes
+; slither in the meadows (1 HP), skeletons shamble on the sand (2 HP,
+; drop a coin). Foes respawn when their cell re-enters the active set —
+; the island restocks. Python mirror: tests/test_shore.py.
+DEF FOE_SNAKE    EQU 1
+DEF FOE_SKEL     EQU 2
+DEF FOE_SALT0    EQU $6B1D
+DEF FOE_SALT1    EQU $E492
+DEF FOE_RANGE    EQU 80         ; foes approach inside this range (px)
+DEF FOE_GONE     EQU 200        ; despawn beyond this (px)
+DEF SH_HEARTS    EQU 3          ; hearts per landing
+DEF COLLAPSE_TOLL EQU 15        ; gold the island takes when you drop
 
 ; --- Shore mode geometry (2x the ocean, same lattice) ---
 DEF SHORE_W       EQU 640       ; tiles (2x WORLD_W)

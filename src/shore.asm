@@ -47,6 +47,29 @@ wSiteTry:    db             ; SitePlace: try index (must NOT alias the
 wSiteDX:     db             ;   refresh loop counters — SitePlace runs
 wSiteDY:     db             ;   inside them; wSiteDX/DY are its dx/dy temps)
 
+; Shore foes (S3). Foe list entry, 8 bytes: sprite tile (0 = inactive),
+; x px (dw), y px (dw), hp, coin value (0 = no drop), type, spare.
+wFoeList:    ds 16          ; 2 entries x 8
+wShHearts:   db             ; hearts left this landing (SH_HEARTS max)
+wShInvT:     db             ; invulnerability frames after a bite
+wFoeX:       dw             ; UpdateFoes scratch (entry staging)
+wFoeY:       dw
+wFoeHP:      db
+wFoeCoin:    db
+wFoeR:       db             ; FoeRange scratch
+wFoeCur:     dw             ; entry cursor
+wShBallX:    dw             ; the pistol ball (integer px)
+wShBallY:    dw
+wShBallDX:   db
+wShBallDY:   db
+wShBallLife: db
+wShBallActive: db
+wCoinX:      dw             ; dropped coin (wCoinVal = 0: none)
+wCoinY:      dw
+wCoinVal:    db
+wSprSX:      dw             ; ShWriteSprite staging
+wSprSY:      dw
+
 SECTION "Shore", ROMX, BANK[4]
 
 ; ---------------------------------------------------------------------------
@@ -873,6 +896,14 @@ GoAshore:
     call LcdOff
     ld a, 2
     ld [wShHeading], a             ; face south
+    ld a, SH_HEARTS
+    ld [wShHearts], a              ; fresh legs ashore
+    xor a
+    ld [wShInvT], a
+    ld [wShBallActive], a
+    ld [wCoinVal], a
+    ld [wFoeList], a               ; no foes until the first refresh
+    ld [wFoeList + 8], a
     call ShoreCamera
     call ShoreRedrawBody
     ld a, SFX_SPLASH
@@ -1909,6 +1940,12 @@ ShoreSites:
     ld [hli], a
     dec b
     jr nz, .clr
+    ld hl, wFoeList
+    ld b, 16
+.fclr
+    ld [hli], a
+    dec b
+    jr nz, .fclr
     ld [wSiteCount], a
     ld [wSiteQty], a                 ; cell dy
 .cellY
@@ -1970,7 +2007,7 @@ ShoreSites:
     call FarCall3
     pop bc
     cp $FF
-    jr z, .cellDone
+    jr z, .digDone
     ld d, a                        ; isle index
     ld a, b
     ld [wSiteDX], a                ; the FarCalls clobber bc
@@ -1981,12 +2018,12 @@ ShoreSites:
     ld hl, TestGuard
     call FarCall3                  ; a = 1 iff guardian defeated
     and a
-    jr z, .cellDone                ; the guardian still watches: no X
+    jr z, .digDone                 ; the guardian still watches: no X
     ld a, [wSiteLoot]
     ld hl, TestFrag
     call FarCall3                  ; a = 1 iff fragment collected
     and a
-    jr nz, .cellDone               ; already dug up
+    jr nz, .digDone                ; already dug up
     ld a, [wSiteDX]
     ld b, a
     ld a, [wSiteDY]
@@ -1995,13 +2032,38 @@ ShoreSites:
     ld d, a
     call DigSitePlace
     and a
-    jr z, .cellDone
+    jr z, .digDone
     ld a, SITE_DIG
     ld [wSiteType], a
     ld a, $FF
     ld [wSiteBit], a               ; the fragment mask, not the dug
     ld [wSiteBit+1], a             ;   bitmap, governs the X
     call SiteAppend
+.digDone
+    ; foes: snakes in the meadows, skeletons on the sand (2 slots/cell)
+    xor a
+    ld [wSiteSlot], a                ; slot 0/1
+.foeSlot
+    ld a, [wSiteCX0]
+    ld hl, wSiteGood
+    add a, [hl]
+    ld b, a
+    ld a, [wSiteCY0]
+    ld hl, wSiteQty
+    add a, [hl]
+    ld c, a
+    ld a, [wSiteSlot]
+    ld d, a
+    call FoeEval
+    and a
+    jr z, .noFoe
+    call FoeAppend
+.noFoe
+    ld a, [wSiteSlot]
+    inc a
+    ld [wSiteSlot], a
+    cp 2
+    jr nz, .foeSlot
 .cellDone
     ld a, [wSiteGood]
     inc a
@@ -2396,7 +2458,782 @@ StrSalvage:   db "SALVAGE:", 0
 StrHoldFull:  db "YER HOLD IS FULL", 0
 StrGibbet:    db "A GIBBET SWAYS HERE", 0
 StrSkullPole: db "THE DEAD KEEP WATCH", 0
+StrCollapse:  db "DRAGGED TO THE DINGHY", 0
 POPS
+
+; ---------------------------------------------------------------------------
+; Shore foes (S3): snakes in the meadows, skeletons on the sand
+; ---------------------------------------------------------------------------
+
+; in: bc = candidate px X, de = px Y; out: a = 1 iff that tile is walkable.
+; bc/de PRESERVED (the tile-coordinate shift used to destroy them —
+; callers then committed the destroyed values as pixel positions)
+ShWalkablePx:
+    push bc
+    push de
+    SR16 b, c, 3
+    SR16 d, e, 3
+    call ShoreTile
+    call ShoreWalkable
+    pop de
+    pop bc
+    and a
+    ret
+
+; in: b = cx, c = cy, d = slot (0..1); out: a = 0 or FOE type;
+; wSiteX/wSiteY = px, wSiteLoot = coin value (0 = no drop), wFoeHP = HP
+; (NOT wSiteQty: that's the refresh loop's cell-dy counter — an S3 aliasing
+; bug clobbered it with the HP whenever a foe existed, skipping rows)
+FoeEval:
+    ld a, b
+    ld [wChX], a
+    ld a, c
+    ld [wChY], a
+    ld a, d
+    ld [wSiteSlot], a                ; Mul8 clobbers d
+    ld a, c
+    swap a
+    add b
+    ld b, 251
+    call Mul8
+    ld a, [wSeed16]
+    xor h
+    ld h, a
+    ld a, [wSeed16+1]
+    xor l
+    ld l, a
+    ld a, [wSiteSlot]
+    and a
+    jr nz, .slot1
+    ld a, h
+    xor HIGH(FOE_SALT0)
+    ld h, a
+    ld a, l
+    xor LOW(FOE_SALT0)
+    ld l, a
+    jr .mix
+.slot1
+    ld a, h
+    xor HIGH(FOE_SALT1)
+    ld h, a
+    ld a, l
+    xor LOW(FOE_SALT1)
+    ld l, a
+.mix
+    call Mix16                       ; h1
+    ld a, l
+    and 7
+    cp 2
+    jp nc, .none                     ; 25% of slots
+    ld a, h
+    ld [wSiteLoot], a                ; temp: the hash byte
+    call SitePlace
+    and a
+    jp z, .none
+    ; snake on meadow tiles, skeleton elsewhere
+    ld a, [wSiteX]
+    sub 4
+    ld c, a
+    ld a, [wSiteX+1]
+    sbc 0
+    ld b, a
+    SR16 b, c, 3
+    ld a, [wSiteY]
+    sub 4
+    ld e, a
+    ld a, [wSiteY+1]
+    sbc 0
+    ld d, a
+    SR16 d, e, 3
+    call ShoreTile
+    cp TILE_SAND
+    jr z, .skel
+    ; meadow: snake (1 HP, no drop)
+    ld a, FOE_SNAKE
+    ld [wSiteType], a
+    ld a, 1
+    ld [wFoeHP], a
+    xor a
+    ld [wSiteLoot], a
+    ld a, FOE_SNAKE
+    ret
+.skel
+    ld a, FOE_SKEL
+    ld [wSiteType], a
+    ld a, 2
+    ld [wFoeHP], a
+    ld a, [wSiteLoot]
+    and 7
+    add 2                            ; coin: 2..9 gold
+    ld [wSiteLoot], a
+    ld a, FOE_SKEL
+    ret
+.none
+    xor a
+    ret
+
+; append the evaluated foe (wSiteType/wSiteX/wSiteY/wSiteQty/wSiteLoot)
+; to the foe list (2 entries max)
+FoeAppend:
+    ld hl, wFoeList
+    ld a, [hl]
+    and a
+    jr z, .free
+    ld hl, wFoeList + 8
+    ld a, [hl]
+    and a
+    ret nz                           ; both slots full
+.free
+    ld a, [wSiteType]
+    add TILE_SNAKE - 1               ; sprite tile (114/115)
+    ld [hli], a
+    ld a, [wSiteX]
+    ld [hli], a
+    ld a, [wSiteX+1]
+    ld [hli], a
+    ld a, [wSiteY]
+    ld [hli], a
+    ld a, [wSiteY+1]
+    ld [hli], a
+    ld a, [wFoeHP]                   ; hp
+    ld [hli], a
+    ld a, [wSiteLoot]                ; coin value
+    ld [hli], a
+    ld a, [wSiteType]
+    ld [hl], a
+    ret
+
+; out: a = rough chebyshev range player<->foe (255 if either axis >= 256)
+FoeRange:
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    ld a, [wFoeX]
+    ld c, a
+    ld a, [wFoeX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jr nz, .far
+    ld a, l
+    ld [wFoeR], a
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    ld a, [wFoeY]
+    ld c, a
+    ld a, [wFoeY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jr nz, .far
+    ld a, [wFoeR]
+    cp l
+    jr nc, .m
+    ld a, l
+.m
+    ret
+.far
+    ld a, 255
+    ret
+
+; The foe bites: 1 heart, knockback, a beat of invulnerability.
+HurtPlayer:
+    ld a, 60
+    ld [wShInvT], a
+    ld a, 6
+    ld [wHitFlashT], a
+    ld a, SFX_HIT
+    ld hl, PlaySfx
+    call FarCall3
+    ld hl, wShHearts
+    dec [hl]
+    jp z, ShoreCollapse
+    ; knockback: 8 px away from the foe, per axis, walkable-checked
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    ld a, [wFoeX]
+    ld c, a
+    ld a, [wFoeX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a                          ; hl = dx (player - foe)
+    ld a, 8
+    bit 7, h
+    jr z, .kx
+    ld a, -8
+.kx
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .kx2
+    dec d
+.kx2
+    ld a, [wShPosX]
+    add e
+    ld c, a
+    ld a, [wShPosX+1]
+    adc d
+    ld b, a                          ; bc = candidate x
+    ld a, [wShPosY]
+    ld e, a
+    ld a, [wShPosY+1]
+    ld d, a
+    call ShWalkablePx
+    and a
+    jr z, .ky
+    ld a, c
+    ld [wShPosX], a
+    ld a, b
+    ld [wShPosX+1], a
+.ky
+    ; same for y
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    ld a, [wFoeY]
+    ld c, a
+    ld a, [wFoeY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, 8
+    bit 7, h
+    jr z, .kyy
+    ld a, -8
+.kyy
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .ky2
+    dec d
+.ky2
+    ld a, [wShPosY]
+    add e
+    ld e, a
+    ld a, [wShPosY+1]
+    adc d
+    ld d, a                          ; de = candidate y
+    ld a, [wShPosX]
+    ld c, a
+    ld a, [wShPosX+1]
+    ld b, a
+    call ShWalkablePx
+    and a
+    ret z
+    ld a, e
+    ld [wShPosY], a
+    ld a, d
+    ld [wShPosY+1], a
+    ret
+
+; ---------------------------------------------------------------------------
+; The pistol (B ashore) and its ball
+; ---------------------------------------------------------------------------
+
+SHBALL_VEL: db 0, -3, 3, 0, 0, 3, -3, 0   ; N E S W
+
+ShoreFire:
+    ld a, [wShBallActive]
+    and a
+    ret nz
+    ld a, [wFireCool]
+    and a
+    ret nz
+    ld a, 25
+    ld [wFireCool], a
+    ld a, 1
+    ld [wShBallActive], a
+    ld a, [wShPosX]
+    ld [wShBallX], a
+    ld a, [wShPosX+1]
+    ld [wShBallX+1], a
+    ld a, [wShPosY]
+    ld [wShBallY], a
+    ld a, [wShPosY+1]
+    ld [wShBallY+1], a
+    ld a, [wShHeading]
+    add a
+    ld hl, SHBALL_VEL
+    ld e, a
+    ld d, 0
+    add hl, de
+    ld a, [hli]
+    ld [wShBallDX], a
+    ld a, [hl]
+    ld [wShBallDY], a
+    ld a, 28
+    ld [wShBallLife], a
+    ld a, SFX_CANNON
+    ld hl, PlaySfx
+    call FarCall3
+    ret
+
+UpdateBallSh:
+    ld a, [wFireCool]
+    and a
+    jr z, .noCool
+    dec a
+    ld [wFireCool], a
+.noCool
+    ld a, [wShBallActive]
+    and a
+    ret z
+    ld a, [wShBallLife]
+    dec a
+    ld [wShBallLife], a
+    jr z, .kill
+    ; integrate x
+    ld a, [wShBallDX]
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .px
+    dec d
+.px
+    ld a, [wShBallX]
+    add e
+    ld [wShBallX], a
+    ld a, [wShBallX+1]
+    adc d
+    ld [wShBallX+1], a
+    ; integrate y
+    ld a, [wShBallDY]
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .py
+    dec d
+.py
+    ld a, [wShBallY]
+    add e
+    ld [wShBallY], a
+    ld a, [wShBallY+1]
+    adc d
+    ld [wShBallY+1], a
+    ; the ball dies on unwalkable ground
+    ld a, [wShBallX]
+    ld c, a
+    ld a, [wShBallX+1]
+    ld b, a
+    ld a, [wShBallY]
+    ld e, a
+    ld a, [wShBallY+1]
+    ld d, a
+    call ShWalkablePx
+    and a
+    ret nz
+.kill
+    xor a
+    ld [wShBallActive], a
+    ret
+
+; ---------------------------------------------------------------------------
+; Foe AI + contact damage
+; ---------------------------------------------------------------------------
+UpdateFoes:
+    ; timers
+    ld a, [wShInvT]
+    and a
+    jr z, .noInv
+    dec a
+    ld [wShInvT], a
+.noInv
+    ld a, [wHitFlashT]
+    and a
+    jr z, .noFlash
+    dec a
+    ld [wHitFlashT], a
+.noFlash
+    ld a, [wFoeList]
+    ld hl, wFoeList + 8
+    or [hl]
+    ret z                            ; no foes
+    xor a
+    ld [wSiteSlot], a                ; reused: foe loop index (refresh is done)
+.foeLoop
+    ld a, [wSiteSlot]
+    add a
+    add a
+    add a                            ; *8
+    ld hl, wFoeList
+    ld e, a
+    ld d, 0
+    add hl, de
+    ld a, l
+    ld [wFoeCur], a
+    ld a, h
+    ld [wFoeCur+1], a
+    ld a, [hl]
+    and a
+    jp z, .foeNext
+    ; read the entry into scratch
+    inc hl
+    ld a, [hli]
+    ld [wFoeX], a
+    ld a, [hli]
+    ld [wFoeX+1], a
+    ld a, [hli]
+    ld [wFoeY], a
+    ld a, [hli]
+    ld [wFoeY+1], a
+    ld a, [hli]
+    ld [wFoeHP], a
+    ld a, [hli]
+    ld [wFoeCoin], a
+    ld a, [hl]
+    ld [wSiteType], a                ; type
+    ; despawn if left far behind
+    call FoeRange
+    cp FOE_GONE
+    jp nc, .despawn
+    ; --- the pistol ball ---
+    ld a, [wShBallActive]
+    and a
+    jp z, .noBall
+    ld a, [wShBallX]
+    ld l, a
+    ld a, [wShBallX+1]
+    ld h, a
+    ld a, [wFoeX]
+    ld c, a
+    ld a, [wFoeX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jp nz, .noBall
+    ld a, l
+    cp 6
+    jp nc, .noBall
+    ld a, [wShBallY]
+    ld l, a
+    ld a, [wShBallY+1]
+    ld h, a
+    ld a, [wFoeY]
+    ld c, a
+    ld a, [wFoeY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    jp nz, .noBall
+    ld a, l
+    cp 6
+    jp nc, .noBall
+    ; hit! the ball dies; the foe loses 1 HP
+    xor a
+    ld [wShBallActive], a
+    ld a, SFX_HIT
+    ld hl, PlaySfx
+    call FarCall3
+    ld hl, wFoeHP
+    dec [hl]
+    jr nz, .noBall                   ; wounded
+    ; dead: drop its coin, if it has one
+    ld a, [wFoeCoin]
+    and a
+    jp z, .noCoin
+    ld [wCoinVal], a
+    ld a, [wFoeX]
+    ld [wCoinX], a
+    ld a, [wFoeX+1]
+    ld [wCoinX+1], a
+    ld a, [wFoeY]
+    ld [wCoinY], a
+    ld a, [wFoeY+1]
+    ld [wCoinY+1], a
+.noCoin
+    ld a, SFX_SINK
+    ld hl, PlaySfx
+    call FarCall3
+.despawn
+    ld a, [wFoeCur]
+    ld l, a
+    ld a, [wFoeCur+1]
+    ld h, a
+    xor a
+    ld [hl], a                       ; entry freed
+    jp .foeNext
+.noBall
+    ; --- approach the player inside FOE_RANGE ---
+    call FoeRange
+    cp FOE_RANGE
+    jp nc, .noMove
+    ; skeletons move on odd frames only (half speed)
+    ld a, [wSiteType]
+    cp FOE_SKEL
+    jr nz, .moveX
+    ldh a, [hFrameCounter]
+    and 1
+    jp z, .noMove                    ; foe code grew past jr range
+.moveX
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    ld a, [wFoeX]
+    ld c, a
+    ld a, [wFoeX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a                          ; hl = dx (player - foe)
+    ld a, h
+    or l
+    jp z, .moveY                     ; aligned (foe code grew past jr range)
+    ld a, 1
+    bit 7, h
+    jr z, .xp
+    ld a, -1
+.xp
+    ; candidate x = foeX + step
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .xp2
+    dec d
+.xp2
+    ld a, [wFoeX]
+    add e
+    ld c, a
+    ld a, [wFoeX+1]
+    adc d
+    ld b, a
+    ld a, [wFoeY]
+    ld e, a
+    ld a, [wFoeY+1]
+    ld d, a
+    call ShWalkablePx
+    and a
+    jp z, .moveY                     ; foe code grew past jr range
+    ld a, c
+    ld [wFoeX], a
+    ld a, b
+    ld [wFoeX+1], a
+.moveY
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    ld a, [wFoeY]
+    ld c, a
+    ld a, [wFoeY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a                          ; hl = dy
+    ld a, h
+    or l
+    jp z, .noMove                    ; aligned (foe code grew past jr range)
+    ld a, 1
+    bit 7, h
+    jr z, .yp
+    ld a, -1
+.yp
+    ld e, a
+    ld d, 0
+    bit 7, a
+    jr z, .yp2
+    dec d
+.yp2
+    ld a, [wFoeY]
+    add e
+    ld e, a
+    ld a, [wFoeY+1]
+    adc d
+    ld d, a
+    ld a, [wFoeX]
+    ld c, a
+    ld a, [wFoeX+1]
+    ld b, a
+    call ShWalkablePx
+    and a
+    jp z, .noMove
+    ld a, e
+    ld [wFoeY], a
+    ld a, d
+    ld [wFoeY+1], a
+.noMove
+    ; --- contact damage ---
+    call FoeRange
+    cp 7
+    jr nc, .noTouch
+    ld a, [wShInvT]
+    and a
+    jr nz, .noTouch
+    call HurtPlayer
+.noTouch
+    ; write the entry back
+    ld a, [wFoeCur]
+    ld l, a
+    ld a, [wFoeCur+1]
+    ld h, a
+    inc hl                           ; x lo
+    ld a, [wFoeX]
+    ld [hli], a
+    ld a, [wFoeX+1]
+    ld [hli], a
+    ld a, [wFoeY]
+    ld [hli], a
+    ld a, [wFoeY+1]
+    ld [hli], a
+    ld a, [wFoeHP]
+    ld [hl], a
+.foeNext
+    ld a, [wSiteSlot]
+    inc a
+    ld [wSiteSlot], a
+    cp 2
+    jp nz, .foeLoop
+    ret
+
+; 0 hearts: the island takes its toll and you wake at the dinghy.
+ShoreCollapse:
+    ; toll: min(gold, COLLAPSE_TOLL)
+    ld a, [wGold]
+    ld l, a
+    ld a, [wGold+1]
+    ld h, a
+    ld a, h
+    and a
+    jr nz, .fullToll                 ; >= 256: can afford it
+    ld a, l
+    cp COLLAPSE_TOLL
+    jr nc, .fullToll
+    ld b, l                          ; take whatever's left
+    jr .take
+.fullToll
+    ld b, COLLAPSE_TOLL
+.take
+    ld hl, TrySpendGold
+    call FarCall3
+    ld a, SH_HEARTS
+    ld [wShHearts], a
+    ld a, 120
+    ld [wShInvT], a
+    ld a, [wDingX]
+    ld [wShPosX], a
+    ld a, [wDingX+1]
+    ld [wShPosX+1], a
+    ld a, [wDingY]
+    ld [wShPosY], a
+    ld a, [wDingY+1]
+    ld [wShPosY+1], a
+    call ShoreMsgBegin
+    ld hl, StrCollapse
+    ld de, $9800 + 8*32 + 1
+    call PrintStr
+    call ShoreMsgEndActed
+    ret
+
+; coin pickup: walk over a dropped coin to collect it
+UpdateCoin:
+    ld a, [wCoinVal]
+    and a
+    ret z                            ; no coin out
+    ld a, [wShPosX]
+    ld l, a
+    ld a, [wShPosX+1]
+    ld h, a
+    ld a, [wCoinX]
+    ld c, a
+    ld a, [wCoinX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    ret nz
+    ld a, l
+    cp 8
+    ret nc
+    ld a, [wShPosY]
+    ld l, a
+    ld a, [wShPosY+1]
+    ld h, a
+    ld a, [wCoinY]
+    ld c, a
+    ld a, [wCoinY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    call AbsHL
+    ld a, h
+    and a
+    ret nz
+    ld a, l
+    cp 8
+    ret nc
+    ; collect
+    ld a, [wCoinVal]
+    ld b, a
+    ld hl, AddGold
+    call FarCall3
+    ld a, SFX_COIN
+    ld hl, PlaySfx
+    call FarCall3
+    xor a
+    ld [wCoinVal], a
+    ret
+
+; ---------------------------------------------------------------------------
+; Sprites / HUD
+; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
 ; Sprites / HUD
@@ -2486,7 +3323,7 @@ ShoreHud:
     ld a, TILE_A + 7                 ; 'H'
     ld [de], a
     inc de
-    ld a, [wHull]
+    ld a, [wShHearts]                ; ashore, H is YOUR health
     call PrintDec2
     ld a, TILE_SPACE
     ld [de], a
@@ -2519,6 +3356,120 @@ ShoreHud:
     ld [de], a
     ret
 
+; Write/hide one OAM entry at de for a world-px position at [hl]
+; (x dw, y dw); b = sprite tile (0 = hide). clobbers a, c, h, l
+ShWriteSprite:
+    push bc                          ; the tile
+    ld a, [hli]
+    ld [wSprSX], a
+    ld a, [hli]
+    ld [wSprSX+1], a
+    ld a, [hli]
+    ld [wSprSY], a
+    ld a, [hl]
+    ld [wSprSY+1], a
+    ld a, b
+    and a
+    jr z, .hide
+    ; sx = x - camX (16-bit: foes sit up to a cell off the viewport)
+    ld a, [wSprSX]
+    ld l, a
+    ld a, [wSprSX+1]
+    ld h, a
+    ld a, [wShCamX]
+    ld c, a
+    ld a, [wShCamX+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, h
+    and a
+    jr nz, .hide
+    ld a, l
+    add 4
+    cp 169
+    jr nc, .hide
+    ld [wSprSX], a                   ; screen x
+    ; sy = y - camY
+    ld a, [wSprSY]
+    ld l, a
+    ld a, [wSprSY+1]
+    ld h, a
+    ld a, [wShCamY]
+    ld c, a
+    ld a, [wShCamY+1]
+    ld b, a
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc b
+    ld h, a
+    ld a, h
+    and a
+    jr nz, .hide
+    ld a, l
+    add 12
+    cp 160
+    jr nc, .hide
+    ld [de], a                       ; Y
+    inc de
+    ld a, [wSprSX]
+    ld [de], a                       ; X
+    inc de
+    pop bc
+    ld a, b
+    ld [de], a                       ; tile
+    inc de
+    xor a
+    ld [de], a                       ; attr
+    inc de
+    ret
+.hide
+    pop bc
+    xor a
+    ld [de], a
+    inc de
+    inc de
+    inc de
+    inc de
+    ret
+
+; Foes into OAM entries 8-9, the ball at 10, the coin at 11.
+ShoreFoeSprites:
+    ld hl, wFoeList
+    ld de, wShadowOAM + 32
+    ld a, [hl]                       ; foe 0 tile (0 = inactive)
+    ld b, a
+    inc hl
+    call ShWriteSprite
+    ld hl, wFoeList + 8
+    ld a, [hl]
+    ld b, a
+    inc hl
+    call ShWriteSprite
+    ld a, [wShBallActive]
+    and a
+    ld b, TILE_BALL
+    jr nz, .ball
+    ld b, 0
+.ball
+    ld hl, wShBallX
+    call ShWriteSprite
+    ld a, [wCoinVal]
+    and a
+    ld b, TILE_COIN
+    jr nz, .coin
+    ld b, 0
+.coin
+    ld hl, wCoinX
+    call ShWriteSprite
+    ret
+
 ; ---------------------------------------------------------------------------
 ; Per-frame entry points
 ; ---------------------------------------------------------------------------
@@ -2527,7 +3478,14 @@ ShoreHud:
 ; The ROM0 blit loops poll STAT before each write, so overrunning VBlank
 ; stretches into the visible frame instead of dropping writes.
 ShoreVBlank::
+    ld a, [wHitFlashT]
+    and a
+    jr z, .calm
+    ld a, $1B                      ; inverted burst: you got bit
+    jr .bgp
+.calm
     ld a, $E4                      ; no storms ashore: canonical BGP
+.bgp
     ldh [rBGP], a
     ld a, [wShCamX]
     ldh [rSCX], a
@@ -2564,11 +3522,20 @@ UpdateShore::
     call TryReboard                ; else: beside the dinghy -> back aboard
     ret
 .noA
+    ldh a, [hJoyNew]
+    and PADF_B
+    jr z, .noB
+    call ShoreFire                 ; the pistol
+.noB
     call ShoreMove
     call ShoreCamera
     call ShoreStream
     call ShoreSites
+    call UpdateFoes
+    call UpdateBallSh
+    call UpdateCoin
     call ShoreSprites
     call ShoreSiteSprites
+    call ShoreFoeSprites
     call ShoreHud
     ret

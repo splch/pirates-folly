@@ -141,6 +141,23 @@ def landmark_eval(cx, cy, s16):
         return None
     return (3 + (h1 >> 8 & 1), *pos)
 
+# --- S3: shore foes (mirror of FoeEval in shore.asm) ---
+FOE_SALT0, FOE_SALT1 = 0x6B1D, 0xE492
+
+def foe_eval(cx, cy, slot, s16):
+    """-> (type, hp, coin, sx, sy) or None. type 1 = snake, 2 = skeleton."""
+    cell = cy * 16 + cx
+    h1 = mix16(((cell * 251) & 0xFFFF) ^ s16 ^ (FOE_SALT0 if slot == 0 else FOE_SALT1))
+    if (h1 & 7) >= 2:
+        return None
+    pos = _site_place(h1, cx, cy, s16)
+    if pos is None:
+        return None
+    sx, sy = pos
+    if shore_tile(sx, sy, s16) == 3:   # sand -> skeleton
+        return (2, 2, 2 + ((h1 >> 8) & 7), sx, sy)
+    return (1, 1, 0, sx, sy)           # meadow -> snake
+
 def find_landing(s16, tx, ty):
     """Mirror of shore.asm TryLand: ship at water tile (tx,ty); scan the
     N/S/W/E neighbor ocean tiles for land, then the 4 sub-tiles in order;
@@ -253,6 +270,13 @@ def dismiss_and_wait(pb):
     for _ in range(30):          # the shore rebuild fill spans many frames
         pb.tick()
 
+def clear_foes(mem):
+    """Foes interfere with positioning asserts; tests that aren't about
+    foes clear them. The refresh re-spawns them when the camera cell
+    changes, so clear AFTER any teleport has settled."""
+    mem[syms["wFoeList"]] = 0
+    mem[syms["wFoeList"] + 8] = 0
+
 def teleport(pb, tx, ty, tries=8):
     mem = pb.memory
     def calm():
@@ -339,6 +363,7 @@ assert wait_state(pb, 9), f"never went ashore (state {mem[syms['wState']]})"
 want_px = (landing[0] * 8 + 4, landing[1] * 8 + 4)
 got_px = (w16(mem, "wShPosX"), w16(mem, "wShPosY"))
 assert got_px == want_px, f"landed at {got_px}, want {want_px}"
+clear_foes(mem)                     # keep the walking tests bite-free
 print(f"went ashore at {beach} -> shore px {got_px}: OK")
 
 # the dinghy waits at the ship's tile center
@@ -380,6 +405,7 @@ def go_to(mem, x, y):
     pb.tick()
     for _ in range(5):
         pb.tick()
+    clear_foes(mem)
 
 px, py = w16(mem, "wShPosX"), w16(mem, "wShPosY")
 ccx, ccy = (px >> 3) // 40, (py >> 3) // 36
@@ -474,6 +500,114 @@ for _ in range(60):
 assert mem[syms["wState"]] == 9, \
     f"dig should return ashore (state {mem[syms['wState']]}, want 9)"
 print(f"dig site at {dx_px} (isle 0 cell {isle0}): fragment dug, back ashore: OK")
+
+# --- S3: shore foes — bites, the pistol, coins, collapse ---
+# find a spawned foe in a cell near the player's current position
+px, py = w16(mem, "wShPosX"), w16(mem, "wShPosY")
+ccx, ccy = (px >> 3) // 40, (py >> 3) // 36
+foe = None
+for cy in range(max(0, ccy - 3), 16):
+    for cx in range(max(0, ccx - 3), 16):
+        for slot in (0, 1):
+            f = foe_eval(cx, cy, slot, s16)
+            if f and foe is None:
+                foe = f
+    if foe:
+        break
+assert foe, "no shore foe found on this sea"
+ftyp, fhp, fcoin, fsx, fsy = foe
+print(f"foe found: type {ftyp} at tile ({fsx},{fsy}), coin {fcoin}")
+
+# contact: teleporting onto a foe costs a heart and grants a beat of
+# invulnerability (no bite loop)
+mem[syms["wShHearts"]] = 3
+set16(mem, "wShPosX", fsx * 8 + 4)
+pb.tick()
+set16(mem, "wShPosY", fsy * 8 + 4)
+pb.tick()
+for _ in range(40):
+    pb.tick()
+assert mem[syms["wShHearts"]] == 2, \
+    f"foe bite cost {3 - mem[syms['wShHearts']]} hearts, want 1"
+assert mem[syms["wShInvT"]] > 0, "no invulnerability after the bite"
+print("foe bite: -1 heart, invulnerable after: OK")
+
+# the pistol: weaken the foe, face it, and fire. It dies (and drops its
+# coin if it had one).
+ent = None
+for i in range(2):
+    base = syms["wFoeList"] + i * 8
+    if mem[base]:
+        ent = base
+        break
+assert ent, "no live foe in the list"
+fx = mem[ent + 1] | mem[ent + 2] << 8
+fy = mem[ent + 3] | mem[ent + 4] << 8
+mem[syms["wShInvT"]] = 90           # don't get bitten mid-test
+set16(mem, "wShPosX", fx)
+pb.tick()
+set16(mem, "wShPosY", fy - 24)
+pb.tick()
+mem[syms["wShHeading"]] = 2          # face south, down the barrel
+mem[ent + 5] = 1                     # weaken to 1 HP
+press3(pb, "b")
+for _ in range(30):
+    pb.tick()
+assert mem[ent] == 0, "pistol didn't kill the foe"
+print("pistol: ball kills the foe: OK")
+
+# coin drop + pickup (skeletons only; snakes carry nothing)
+if ftyp == 2:
+    assert mem[syms["wCoinVal"]] != 0, "skeleton dropped no coin"
+    val = mem[syms["wCoinVal"]]
+    assert val == fcoin, f"coin value {val}, want {fcoin}"
+    gold0 = w16(mem, "wGold")
+    cx0 = mem[syms["wCoinX"]] | mem[syms["wCoinX"] + 1] << 8
+    cy0 = mem[syms["wCoinY"]] | mem[syms["wCoinY"] + 1] << 8
+    set16(mem, "wShPosX", cx0)
+    pb.tick()
+    set16(mem, "wShPosY", cy0)
+    pb.tick()
+    for _ in range(10):
+        pb.tick()
+    assert mem[syms["wCoinVal"]] == 0, "coin not collected"
+    assert w16(mem, "wGold") == gold0 + val, \
+        f"coin gave {w16(mem, 'wGold') - gold0}, want {val}"
+    print(f"coin: +{val}G on pickup: OK")
+else:
+    print("coin: n/a (snake drops nothing)")
+
+# collapse: at 0 hearts the island takes its toll and you wake at the dinghy
+foe2 = None
+for cy in range(16):
+    for cx in range(16):
+        for slot in (0, 1):
+            f = foe_eval(cx, cy, slot, s16)
+            if f and foe2 is None:
+                foe2 = f
+    if foe2:
+        break
+assert foe2, "no second foe found"
+_, _, _, f2x, f2y = foe2
+gold0 = w16(mem, "wGold")
+mem[syms["wShInvT"]] = 0
+mem[syms["wShHearts"]] = 1
+set16(mem, "wShPosX", f2x * 8 + 4)
+pb.tick()
+set16(mem, "wShPosY", f2y * 8 + 4)
+pb.tick()
+for _ in range(90):
+    pb.tick()                        # bitten to 0 -> collapse message
+press3(pb, "a")                      # dismiss "DRAGGED TO THE DINGHY"
+for _ in range(30):
+    pb.tick()
+want_gold = max(0, gold0 - 15)
+assert w16(mem, "wGold") == want_gold, \
+    f"toll wrong: gold {w16(mem, 'wGold')}, want {want_gold}"
+assert mem[syms["wShHearts"]] == 3, "hearts not restored"
+assert (w16(mem, "wShPosX"), w16(mem, "wShPosY")) == \
+    (w16(mem, "wDingX"), w16(mem, "wDingY")), "didn't wake at the dinghy"
+print("collapse: toll paid, wake at the dinghy, hearts restored: OK")
 
 # reboard: stand on the dinghy, press A. A press landing inside a screen
 # rebuild vanishes, and one can wake a stale message instead — retry.

@@ -41,7 +41,7 @@ LoadTiles::
     call CopyVRAM
     ld hl, ShoreSprites
     ld de, $8000 + 104 * 16
-    ld bc, 10 * 16
+    ld bc, 13 * 16
     call CopyVRAM
     ld hl, SkullTile
     ld de, $8000 + 68 * 16
@@ -998,6 +998,33 @@ ShoreSprites:
     dw `00033000
     dw `00300300
     dw `03000030
+    dw `00000000
+; 114 TILE_SNAKE
+    dw `00000000
+    dw `00000000
+    dw `00133300
+    dw `01313130
+    dw `00300100
+    dw `00033300
+    dw `03300330
+    dw `00000000
+; 115 TILE_SKEL — shambling skeleton
+    dw `00033000
+    dw `00311300
+    dw `00033000
+    dw `00020000
+    dw `00222000
+    dw `00202000
+    dw `00222200
+    dw `00200200
+; 116 TILE_COIN
+    dw `00000000
+    dw `00033000
+    dw `00322300
+    dw `03222230
+    dw `03222230
+    dw `00322300
+    dw `00033000
     dw `00000000
 
 SECTION "Ball tile", ROMX, BANK[3]

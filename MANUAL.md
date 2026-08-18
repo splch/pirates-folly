@@ -192,7 +192,7 @@ Buy the **DINGHY** at any shipyard, and the world's islands open to you.
 * Deep water, thick forest, boulders, and crags block your way. A wise
   captain skirts them; a stubborn one starves.
 * Your instruments still read at the bottom of the screen: TX, TY in hex,
-  and your hull, gold, and fragments, safe aboard the ship.
+  and your hearts, gold, and fragments.
 * The sea waits for no one, but your ship does: walk back to the dinghy
   and press **A** to reboard her where you left her.
 * Pirates and storms lose interest while you're ashore. Coward's
@@ -209,6 +209,19 @@ Buy the **DINGHY** at any shipyard, and the world's islands open to you.
 
 Every dug site stays dug — the Captain's Log remembers what you've taken.
 The same island never hides the same chest twice in one voyage.
+
+**Dangers ashore.** The islands are guarded, Captain:
+
+* **Snakes** in the meadows and **skeletons** on the sand will come for
+  you. Press **B** to answer with the pistol — one shot drops a snake;
+  a skeleton takes two but drops its coin.
+* A bite costs a **heart** (watch the H reading) and knocks you clear.
+  You keep three hearts per landing, and a bite buys a beat of safety.
+* Lose them all and the island takes its due: 15 gold, and you wake
+  beside the dinghy with your pride in tatters. The crew patches you up,
+  no questions asked.
+* Foes you leave behind slip back to their lairs — cross far enough
+  inland and the island restocks behind you.
 
 ---
 
