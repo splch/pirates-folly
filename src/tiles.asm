@@ -203,39 +203,42 @@ POPS
 ; ROM0: AnimWater (also ROM0) reads it for both sailing and shore mode.
 PUSHS "Water anim data", ROM0
 WaterFrames::
+    ; phase A: deep — 3 staggered wavelets
+    dw `00000000
+    dw `00110000
     dw `00000000
     dw `00000000
-    dw `00100000
+    dw `00000110
+    dw `00000000
+    dw `00011000
+    dw `00000000
+    ; phase A: shallow — deep + extra glints
+    dw `00010000
+    dw `00110000
     dw `00000000
     dw `00000010
+    dw `00000110
+    dw `01000000
+    dw `00011000
     dw `00000000
-    dw `10000000
+    ; phase B: deep — wavelets drifted one pixel right
+    dw `00000000
+    dw `00011000
     dw `00000000
     dw `00000000
-    dw `01001000
+    dw `00000011
     dw `00000000
-    dw `00010010
+    dw `00001100
     dw `00000000
-    dw `01001000
-    dw `00000000
-    dw `00010010
-    ; phase B
-    dw `00000000
+    ; phase B: shallow — drifted with it
+    dw `00001000
+    dw `00011000
     dw `00000000
     dw `00000001
+    dw `00000011
+    dw `00100000
+    dw `00001100
     dw `00000000
-    dw `01000000
-    dw `00000000
-    dw `00001000
-    dw `00000000
-    dw `00000000
-    dw `00010010
-    dw `00000000
-    dw `01001000
-    dw `00000000
-    dw `00010010
-    dw `00000000
-    dw `01001000
 POPS
 
 ; tiles 13-14: port marker (chart) + dock planks (in-world)
@@ -249,13 +252,13 @@ PortTiles:
     dw `33333333
     dw `33033033
     dw `33033033
-    ; 14 TILE_DOCK: plank pier
+    ; 14 TILE_DOCK: plank pier with nail heads
     dw `33333333
-    dw `30003000
+    dw `30203020
     dw `33333333
-    dw `03000300
+    dw `32030203
     dw `33333333
-    dw `30003000
+    dw `30203020
     dw `33333333
     dw `00000000
 
@@ -634,60 +637,60 @@ TerrainTiles:
     dw `00000000
     dw `00000000
     dw `00000000
-; 1 TILE_DEEP — open water, sparse light dots
+; 1 TILE_DEEP — open water: 3 staggered wavelets, calm (WaterFrames A)
+    dw `00000000
+    dw `00110000
     dw `00000000
     dw `00000000
-    dw `00100000
+    dw `00000110
+    dw `00000000
+    dw `00011000
+    dw `00000000
+; 2 TILE_SHALLOW — deep pattern + extra glints: visibly busier (WaterFrames A)
+    dw `00010000
+    dw `00110000
     dw `00000000
     dw `00000010
+    dw `00000110
+    dw `01000000
+    dw `00011000
     dw `00000000
-    dw `10000000
-    dw `00000000
-; 2 TILE_SHALLOW — coastal water, wave speckle
-    dw `00000000
-    dw `01001000
-    dw `00000000
-    dw `00010010
-    dw `00000000
-    dw `01001000
-    dw `00000000
-    dw `00010010
-; 3 TILE_SAND
+; 3 TILE_SAND — clustered grain with shell flecks
     dw `11111111
-    dw `11211111
-    dw `11111121
+    dw `12111211
     dw `11111111
-    dw `12111111
-    dw `11111211
+    dw `11212111
+    dw `11110111
+    dw `12111212
     dw `11111111
-    dw `11121111
-; 4 TILE_GRASS
+    dw `01121111
+; 4 TILE_GRASS — blade tufts (2px strokes)
     dw `22222222
-    dw `22322222
-    dw `22222232
+    dw `22322223
+    dw `22322232
     dw `22222222
-    dw `23222222
-    dw `22223222
+    dw `23222322
+    dw `23222322
     dw `22222222
-    dw `22322222
-; 5 TILE_FOREST
+    dw `22232222
+; 5 TILE_FOREST — canopy blobs over dark undergrowth
     dw `33333333
-    dw `32233333
-    dw `32223333
+    dw `32233233
+    dw `32223323
     dw `33333333
-    dw `33333223
-    dw `33332223
+    dw `33233223
+    dw `32333223
     dw `33333333
     dw `33333333
-; 6 TILE_MOUNTAIN — dark with bright peaks
+; 6 TILE_MOUNTAIN — snow-capped crags: triangular peaks, bright cap
     dw `33333333
     dw `33033033
-    dw `30030003
-    dw `30030003
+    dw `32233223
+    dw `32333233
     dw `33333333
     dw `33303303
-    dw `33003003
-    dw `33333333
+    dw `33223322
+    dw `33323332
 ; 7 TILE_CURSOR — underline bar
     dw `00000000
     dw `00000000
