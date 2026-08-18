@@ -131,6 +131,11 @@ DEF TILE_SAND_GR25 EQU 131    ; sand 75 / grass 25     (e 154-155)
 DEF TILE_SAND_GR50 EQU 132    ; sand/grass 50/50       (e 156-157, 160-161)
 DEF TILE_GR_SAND25 EQU 133    ; grass 75 / sand 25     (e 158-159)
 
+; --- Screen-dressing glyphs (phase 7) ---
+DEF TILE_COMPASS   EQU 134    ; compass rose (chart header)
+DEF TILE_GULL      EQU 135    ; gull arcs (title screen)
+DEF TILE_FRAME     EQU 136    ; thin rule (port screen frame)
+
 ; --- Port towns (S4) ---
 ; In a port district, four buildings spawn at hashed spots: tavern,
 ; market, shipyard, harbor. Each opens the matching port screen.

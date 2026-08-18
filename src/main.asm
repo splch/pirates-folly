@@ -744,6 +744,10 @@ DrawTitleScreen::
     ; a lone ship on the horizon
     ld a, TILE_SHIP_S
     ld [$9800 + 13 * 32 + 9], a
+    ; gulls overhead
+    ld a, TILE_GULL
+    ld [$9800 + 2 * 32 + 3], a
+    ld [$9800 + 2 * 32 + 15], a
     ld hl, StrTitle
     ld de, $9800 + 4 * 32 + 3
     call PrintStr

@@ -55,6 +55,10 @@ LoadTiles::
     ld de, $8000 + 121 * 16
     ld bc, 4 * 16
     call CopyVRAM
+    ld hl, ScreenTiles
+    ld de, $8000 + 134 * 16
+    ld bc, 3 * 16
+    call CopyVRAM
     ; --- synthesize the transition tiles (Bayer-dither mixes) ---
     ld hl, TerrainTiles + 16         ; DEEP
     ld de, TerrainTiles + 32         ; SHALLOW
@@ -974,6 +978,36 @@ VariantTiles:
     dw `33332233
     dw `33333333
     dw `33333333
+
+; tiles 134-136: screen-dressing glyphs
+ScreenTiles:
+; 134 TILE_COMPASS — four-point star (white & ink on parchment)
+    dw `00030000
+    dw `00033000
+    dw `13030030
+    dw `13333331
+    dw `13030030
+    dw `00033000
+    dw `00030000
+    dw `00000000
+; 135 TILE_GULL — two soaring arcs
+    dw `00000000
+    dw `00000000
+    dw `00300300
+    dw `03033030
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+; 136 TILE_FRAME — a single dark rule mid-tile
+    dw `00000000
+    dw `00000000
+    dw `33333333
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
+    dw `00000000
 
 HexFont:
 ; 3x5 pixel glyphs, top-left of the tile. 16 tiles: 0-9, A-F.

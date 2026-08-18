@@ -501,6 +501,21 @@ EnterPortFromShore::
 ; Full re-render of the port screen (LCD off).
 RenderPort:
     call DrawSeedScreen            ; clear tilemap
+    ; thin frame: a rule across the top and bottom rows
+    ld hl, $9800
+    ld b, 20
+.topRule
+    ld [hl], TILE_FRAME
+    inc hl
+    dec b
+    jr nz, .topRule
+    ld hl, $9800 + 17 * 32
+    ld b, 20
+.botRule
+    ld [hl], TILE_FRAME
+    inc hl
+    dec b
+    jr nz, .botRule
     ; port name, row 1
     ld de, $9800 + 1 * 32 + 3
     call PrintPortName

@@ -1634,7 +1634,49 @@ ChartSeed:
 
 PUSHS "Chart strings", ROMX, BANK[3]
 StrCartDone: db "CHART COMPLETE! 500G", 0
+StrSeaChart: db "SEA CHART", 0
 POPS
+
+; Dress the chart: "SEA CHART" header with compass roses, and parchment
+; margins flanking the 16x16 grid. LCD off. clobbers a, b, d, e, h, l
+ChartFrame:
+    ld hl, StrSeaChart
+    ld de, $9800 + 5
+    call PrintStr
+    ld a, TILE_COMPASS
+    ld [$9800 + 3], a
+    ld [$9800 + 15], a
+    ; parchment margins: cols 0-1 and 18-19, rows 1-17
+    ld e, 1                          ; row
+.rowLoop
+    ld a, e
+    call MapRowAddr                  ; hl = row base
+    call .putSand                    ; col 0
+    inc hl
+    call .putSand                    ; col 1
+    ld a, l
+    add 16
+    ld l, a                          ; col 18
+    call .putSand
+    inc hl
+    call .putSand                    ; col 19
+    inc e
+    ld a, e
+    cp 18
+    jr nz, .rowLoop
+    ret
+.putSand
+    ld [hl], TILE_SAND
+    push hl
+    ld a, [wIsCGB]
+    cp $11
+    jr nz, .psNo
+    VBK1
+    ld [hl], 2                       ; sand palette
+    VBK0
+.psNo
+    pop hl
+    ret
 
 ; Clear all 40 OAM entries. LCD must be off.
 ClearOAM::
@@ -1655,6 +1697,7 @@ EnterChart::
     call RenderChart
     call ChartMarker
     call ChartSeed
+    call ChartFrame
     call ChartBounty
     ld a, LCDC_ON | LCDC_BG_ON | LCDC_BLOCK01 | LCDC_OBJ_ON
     ldh [rLCDC], a
